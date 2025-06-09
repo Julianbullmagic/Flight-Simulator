@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Helicopter Flight Simulator with Wooden Huts</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background: #87CEEB;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        #collision-log {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            color: white;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 10px;
+            border-radius: 5px;
+            font-size: 12px;
+            z-index: 100;
+            max-height: 200px;
+            overflow-y: auto;
+            width: 300px;
+        }
+
+        #info {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: white;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 10px;
+            border-radius: 5px;
+            font-size: 14px;
+            z-index: 100;
+            max-width: 300px;
+        }
+
+        #debug-toggle {
+            position: absolute;
+            top: 120px;
+            left: 10px;
+            color: white;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 5px 10px;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 12px;
+            z-index: 100;
+        }
+        
+        #title {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            color: white;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 15px 20px;
+            border-radius: 10px;
+            font-size: 18px;
+            z-index: 100;
+            text-align: center;
+        }
+        
+        .hut-info {
+            font-size: 12px;
+            margin-top: 8px;
+            line-height: 1.4;
+        }
+    </style>
+</head>
+<body>
+    <div id="title">Wooden Hut Village<br><span class="hut-info">Fly around the huts!<br>Crash at >2.5m/s to explode</span></div>
+    
+    <div id="info">
+        <strong>Helicopter Flight Simulator</strong><br>
+        W/S: Forward/Backward<br>
+        Arrow Keys: Up/Down/Left/Right<br>
+        A/D: Rotate Left/Right<br>
+        <div id="speed">Speed: 0</div>
+        <div id="altitude">Altitude: 0</div>
+    </div>
+
+    <div id="debug-toggle" onclick="toggleDebug()">Toggle Debug View</div>
+    <div id="collision-log"></div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cannon.js/0.6.2/cannon.min.js"></script>
+
+    <script>
+        // --- SCENE SETUP ---
+        const scene = new THREE.Scene();
+        scene.fog = new THREE.Fog(0x87CEEB, 50, 300);
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        document.body.appendChild(renderer.domElement);
+
+        // --- PHYSICS WORLD ---
+        const world = new CANNON.World();
+        world.gravity.set(0, -9.82, 0); // Apply standard gravity for more realistic falling
+        world.broadphase = new CANNON.NaiveBroadphase();
+        world.solver.iterations = 10;
+
+        // --- LIGHTING ---
+        const ambientLight = new THREE.AmbientLight(0x404040, 0.8);
+        scene.add(ambientLight);
+
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 1.0);
+        directionalLight.position.set(50, 50, 50);
+        directionalLight.castShadow = true;
+        directionalLight.shadow.mapSize.width = 2048;
+        directionalLight.shadow.mapSize.height = 2048;
+        scene.add(directionalLight);
+        
+        // --- TERRAIN GENERATION ---
+
+        // Noise function for varied terrain height
+        function noise(x, y) {
+            const scale = 0.05;
+            const amplitude = 8;
+            return Math.sin(x * scale) * Math.cos(y * scale) * amplitude +
+                   Math.sin(x * scale * 2) * Math.cos(y * scale * 2) * amplitude * 0.5 +
+                   Math.sin(x * scale * 4) * Math.cos(y * scale * 4) * amplitude * 0.25;
+        }
+
+        // Create the visual terrain mesh
+        const terrainSize = 250;
+        const terrainResolution = 60;
+        const terrainGeometry = new THREE.PlaneGeometry(terrainSize, terrainSize, terrainResolution - 1, terrainResolution - 1);
+        
+        // Apply noise to vertices to create hills
+        const vertices = terrainGeometry.attributes.position.array;
+        for (let i = 0; i < vertices.length; i += 3) {
+            const x = vertices[i];
+            const y = vertices[i + 1];
+            vertices[i + 2] = noise(x, y);
+        }
+        
+        terrainGeometry.attributes.position.needsUpdate = true;
+        terrainGeometry.computeVertexNormals();
+        
+        // Function to create a uniform green texture
+        function createTerrainTexture() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 512;
+            canvas.height = 512;
+            const ctx = canvas.getContext('2d');
+            
+            // Base green color
+            ctx.fillStyle = '#2E8B57';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            return canvas;
+        }
+
+        const terrainTexture = new THREE.CanvasTexture(createTerrainTexture());
+        const terrainMaterial = new THREE.MeshLambertMaterial({ map: terrainTexture });
+        const terrain = new THREE.Mesh(terrainGeometry, terrainMaterial);
+        terrain.rotation.x = -Math.PI / 2;
+        terrain.receiveShadow = true;
+        scene.add(terrain);
+
+        // Create the physics body for the terrain using a heightfield
+        const heightfieldData = [];
+        for (let i = 0; i < terrainResolution; i++) {
+            heightfieldData.push([]);
+            for (let j = 0; j < terrainResolution; j++) {
+                const x = (j / (terrainResolution - 1) - 0.5) * terrainSize;
+                const y = (i / (terrainResolution - 1) - 0.5) * terrainSize;
+                heightfieldData[i].push(noise(x, y));
+            }
+        }
+        const terrainShape = new CANNON.Heightfield(heightfieldData, {
+            elementSize: terrainSize / (terrainResolution - 1)
+        });
+        const terrainBody = new CANNON.Body({ mass: 0 });
+        terrainBody.addShape(terrainShape);
+        terrainBody.position.set(-terrainSize / 2, 0, terrainSize / 2);
+        terrainBody.quaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), -Math.PI / 2);
+        world.addBody(terrainBody);
+
+        // --- WOODEN HUT CREATION ---
+        
+        // Function to create a procedural wood texture
+        function createWoodTexture(baseColor, grainColor = 0x000000, grainOpacity = 0.15) {
+            const canvas = document.createElement('canvas');
+            canvas.width = 256;
+            canvas.height = 256;
+            const ctx = canvas.getContext('2d');
+            
+            ctx.fillStyle = baseColor;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            ctx.strokeStyle = `rgba(${(grainColor >> 16) & 0xff}, ${(grainColor >> 8) & 0xff}, ${grainColor & 0xff}, ${grainOpacity})`;
+            ctx.lineWidth = 1.5;
+            
+            for (let i = 0; i < 80; i++) {
+                const x1 = Math.random() * canvas.width;
+                const y1 = Math.random() * canvas.height;
+                const x2 = x1 + (Math.random() - 0.5) * 80;
+                const y2 = y1 + (Math.random() - 0.5) * 80;
+                
+                ctx.beginPath();
+                ctx.moveTo(x1, y1);
+                ctx.bezierCurveTo(
+                    x1 + (Math.random() - 0.5) * 60, y1 + (Math.random() - 0.5) * 60,
+                    x2 + (Math.random() - 0.5) * 60, y2 + (Math.random() - 0.5) * 60,
+                    x2, y2
+                );
+                ctx.stroke();
+            }
+            return canvas;
+        }
+
+        const huts = [];
+        const debugBoxes = [];
+        const hutPositions = [
+            {x: 30, z: 20, width: 6, height: 4, depth: 6},
+            {x: -25, z: 35, width: 5, height: 5, depth: 5},
+            {x: 15, z: -40, width: 5, height: 4, depth: 4},
+            {x: -40, z: -15, width: 4, height: 6, depth: 4},
+            {x: 50, z: -20, width: 7, height: 4, depth: 7},
+            {x: -10, z: 60, width: 6, height: 5, depth: 5},
+            {x: 35, z: 45, width: 5, height: 4, depth: 4},
+            {x: -60, z: 10, width: 5, height: 6, depth: 5}
+        ];
+
+        const woodTexture = new THREE.CanvasTexture(createWoodTexture('#8B4513'));
+        const darkWoodTexture = new THREE.CanvasTexture(createWoodTexture('#5D2906'));
+        const roofTexture = new THREE.CanvasTexture(createWoodTexture('#A0522D', '#000000', 0.2));
+
+        hutPositions.forEach(hut => {
+            const terrainHeight = noise(hut.x, hut.z);
+            
+            const hutBodyGeometry = new THREE.BoxGeometry(hut.width, hut.height, hut.depth);
+            const hutBodyMaterial = new THREE.MeshLambertMaterial({ map: woodTexture });
+            const hutBodyMesh = new THREE.Mesh(hutBodyGeometry, hutBodyMaterial);
+            hutBodyMesh.position.set(hut.x, terrainHeight + hut.height/2, hut.z);
+            hutBodyMesh.castShadow = true;
+            scene.add(hutBodyMesh);
+            
+            const roofHeight = hut.height * 0.5;
+            const roofGeometry = new THREE.CylinderGeometry(0, hut.width * 0.707, roofHeight, 4, 1);
+            const roofMaterial = new THREE.MeshLambertMaterial({ map: roofTexture });
+            const roofMesh = new THREE.Mesh(roofGeometry, roofMaterial);
+            roofMesh.position.set(hut.x, terrainHeight + hut.height + roofHeight / 2, hut.z);
+            roofMesh.rotation.y = Math.PI / 4;
+            roofMesh.castShadow = true;
+            scene.add(roofMesh);
+            
+            const doorWidth = hut.width * 0.3;
+            const doorHeight = hut.height * 0.7;
+            const doorGeometry = new THREE.BoxGeometry(doorWidth, doorHeight, 0.15);
+            const doorMaterial = new THREE.MeshLambertMaterial({ map: darkWoodTexture });
+            const doorMesh = new THREE.Mesh(doorGeometry, doorMaterial);
+            doorMesh.position.set(hut.x, terrainHeight + doorHeight/2, hut.z + hut.depth/2 + 0.05);
+            scene.add(doorMesh);
+            
+            const windowSize = Math.min(hut.width, hut.height) * 0.25;
+            const windowGeometry = new THREE.BoxGeometry(windowSize, windowSize, 0.15);
+            const windowMaterial = new THREE.MeshLambertMaterial({ color: 0xADD8E6, transparent: true, opacity: 0.6 });
+            const windowMesh = new THREE.Mesh(windowGeometry, windowMaterial);
+            windowMesh.position.set(hut.x - hut.width/4, terrainHeight + hut.height * 0.6, hut.z + hut.depth/2 + 0.05);
+            scene.add(windowMesh);
+            
+            const hutBodyShape = new CANNON.Box(new CANNON.Vec3(hut.width/2, hut.height/2, hut.depth/2));
+            const hutPhysicsBody = new CANNON.Body({ mass: 0 });
+            hutPhysicsBody.addShape(hutBodyShape);
+            hutPhysicsBody.position.set(hut.x, terrainHeight + hut.height/2, hut.z);
+            world.addBody(hutPhysicsBody);
+            
+            const roofPhysicsShape = new CANNON.Box(new CANNON.Vec3(hut.width/2, roofHeight/2, hut.depth/2));
+            const roofPhysicsBody = new CANNON.Body({ mass: 0 });
+            roofPhysicsBody.addShape(roofPhysicsShape);
+            roofPhysicsBody.position.set(hut.x, terrainHeight + hut.height + roofHeight/2, hut.z);
+            world.addBody(roofPhysicsBody);
+
+            const hutDebugBox = new THREE.Mesh(new THREE.BoxGeometry(hut.width, hut.height, hut.depth), new THREE.MeshBasicMaterial({ color: 0xffff00, wireframe: true, transparent: true, opacity: 0.5 }));
+            hutDebugBox.position.copy(hutPhysicsBody.position);
+            hutDebugBox.visible = false;
+            scene.add(hutDebugBox);
+
+            const roofDebugBox = new THREE.Mesh(new THREE.BoxGeometry(hut.width, roofHeight, hut.depth), new THREE.MeshBasicMaterial({ color: 0xff00ff, wireframe: true, transparent: true, opacity: 0.5 }));
+            roofDebugBox.position.copy(roofPhysicsBody.position);
+            roofDebugBox.visible = false;
+            scene.add(roofDebugBox);
+            
+            debugBoxes.push(hutDebugBox, roofDebugBox);
+            huts.push({body: hutBodyMesh, roof: roofMesh, door: doorMesh, window: windowMesh});
+        });
+
+        // --- TREE CREATION ---
+        const trees = [];
+        const treeCount = 150;
+        const treeMaterial = new THREE.MeshLambertMaterial({ color: 0x228B22 });
+
+        for (let i = 0; i < treeCount; i++) {
+            const x = (Math.random() - 0.5) * terrainSize * 0.9;
+            const z = (Math.random() - 0.5) * terrainSize * 0.9;
+            const terrainHeight = noise(x, z);
+
+            // Only place trees on land
+            if (terrainHeight > 0) {
+                const height = Math.random() * 5 + 4; // Random height between 4 and 9
+                const radius = height / 4;
+                
+                // Visual tree
+                const treeGeometry = new THREE.ConeGeometry(radius, height, 8);
+                const treeMesh = new THREE.Mesh(treeGeometry, treeMaterial);
+                treeMesh.position.set(x, terrainHeight + height / 2, z);
+                treeMesh.castShadow = true;
+                scene.add(treeMesh);
+
+                // Physics tree (approximated with a cylinder)
+                const treeShape = new CANNON.Cylinder(0.1, radius, height, 8);
+                const treeBody = new CANNON.Body({ mass: 0 });
+                treeBody.addShape(treeShape);
+                treeBody.position.copy(treeMesh.position);
+                world.addBody(treeBody);
+                
+                // Debug visualization for tree
+                const treeDebugMesh = new THREE.Mesh(treeGeometry, new THREE.MeshBasicMaterial({ color: 0x00ff00, wireframe: true, transparent: true, opacity: 0.5 }));
+                treeDebugMesh.position.copy(treeBody.position);
+                treeDebugMesh.visible = false;
+                scene.add(treeDebugMesh);
+                debugBoxes.push(treeDebugMesh);
+
+                trees.push({ mesh: treeMesh, body: treeBody });
+            }
+        }
+
+        let debugMode = false;
+        function toggleDebug() {
+            debugMode = !debugMode;
+            debugBoxes.forEach(box => { box.visible = debugMode; });
+            helicopterDebugBox.visible = debugMode;
+        }
+        
+        // --- HELICOPTER ---
+        const helicopter = new THREE.Group();
+
+        const bodyGeometry = new THREE.CylinderGeometry(1, 1, 4.5, 12);
+        const bodyMaterial = new THREE.MeshLambertMaterial({ color: 0x4169E1 });
+        const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+        body.rotation.z = Math.PI / 2;
+        body.castShadow = true;
+        helicopter.add(body);
+
+        const tailGeometry = new THREE.CylinderGeometry(0.2, 0.4, 3.5, 8);
+        const tailMaterial = new THREE.MeshLambertMaterial({ color: 0x5577EE });
+        const tail = new THREE.Mesh(tailGeometry, tailMaterial);
+        tail.position.set(-3, 0.3, 0);
+        tail.rotation.z = Math.PI / 2;
+        helicopter.add(tail);
+
+        const mainRotorGeometry = new THREE.CylinderGeometry(4, 4, 0.1, 32);
+        const mainRotorMaterial = new THREE.MeshLambertMaterial({ color: 0xcccccc, transparent: true, opacity: 0.4 });
+        const mainRotor = new THREE.Mesh(mainRotorGeometry, mainRotorMaterial);
+        mainRotor.position.set(0, 1.5, 0);
+        helicopter.add(mainRotor);
+
+        const tailRotorGeometry = new THREE.CylinderGeometry(0.7, 0.7, 0.08, 16);
+        const tailRotorMaterial = new THREE.MeshLambertMaterial({ color: 0xcccccc, transparent: true, opacity: 0.35 });
+        const tailRotor = new THREE.Mesh(tailRotorGeometry, tailRotorMaterial);
+        tailRotor.position.set(-4.7, 0.3, 0);
+        tailRotor.rotation.x = Math.PI / 2;
+        helicopter.add(tailRotor);
+
+        const skidGeometry = new THREE.BoxGeometry(4, 0.15, 0.15);
+        const skidMaterial = new THREE.MeshLambertMaterial({ color: 0x666666 });
+        const leftSkid = new THREE.Mesh(skidGeometry, skidMaterial);
+        leftSkid.position.set(0, -1.2, -1.2);
+        helicopter.add(leftSkid);
+        const rightSkid = new THREE.Mesh(skidGeometry, skidMaterial);
+        rightSkid.position.set(0, -1.2, 1.2);
+        helicopter.add(rightSkid);
+
+        helicopter.position.set(0, 25, 0);
+        scene.add(helicopter);
+
+        const helicopterShape = new CANNON.Box(new CANNON.Vec3(2.5, 1, 1.2));
+        const helicopterBody = new CANNON.Body({ mass: 5, linearDamping: 0.5, angularDamping: 0.8 });
+        helicopterBody.addShape(helicopterShape);
+        helicopterBody.position.copy(helicopter.position);
+        world.add(helicopterBody);
+
+        const helicopterDebugBox = new THREE.Mesh(new THREE.BoxGeometry(5, 2, 2.4), new THREE.MeshBasicMaterial({ color: 0x00ff00, wireframe: true, transparent: true, opacity: 0.5 }));
+        helicopterDebugBox.visible = false;
+        scene.add(helicopterDebugBox);
+        
+        // --- CONTROLS ---
+        const keys = { w: false, s: false, a: false, d: false, up: false, down: false, left: false, right: false };
+        document.addEventListener('keydown', (event) => {
+            switch(event.code) {
+                case 'KeyW': keys.w = true; break;
+                case 'KeyS': keys.s = true; break;
+                case 'KeyA': keys.a = true; break;
+                case 'KeyD': keys.d = true; break;
+                case 'ArrowUp': keys.up = true; break;
+                case 'ArrowDown': keys.down = true; break;
+                case 'ArrowLeft': keys.left = true; break;
+                case 'ArrowRight': keys.right = true; break;
+            }
+        });
+        document.addEventListener('keyup', (event) => {
+            switch(event.code) {
+                case 'KeyW': keys.w = false; break;
+                case 'KeyS': keys.s = false; break;
+                case 'KeyA': keys.a = false; break;
+                case 'KeyD': keys.d = false; break;
+                case 'ArrowUp': keys.up = false; break;
+                case 'ArrowDown': keys.down = false; break;
+                case 'ArrowLeft': keys.left = false; break;
+                case 'ArrowRight': keys.right = false; break;
+            }
+        });
+
+        // --- EXPLOSION EFFECT ---
+        let explosionParticles = [];
+        let isExploding = false;
+
+        function createExplosion(position) {
+            if (isExploding) return;
+            isExploding = true;
+            helicopter.visible = false;
+            
+            const particleCount = 50;
+            const colors = [0xFFA500, 0xFF4500, 0xFF6347, 0x808080, 0x333333];
+            
+            for (let i = 0; i < particleCount; i++) {
+                const size = Math.random() * 0.5 + 0.2;
+                const geometry = new THREE.SphereGeometry(size, 8, 8);
+                const color = colors[Math.floor(Math.random() * colors.length)];
+                const material = new THREE.MeshBasicMaterial({ color });
+                const sphere = new THREE.Mesh(geometry, material);
+                
+                sphere.position.copy(position);
+                sphere.position.x += (Math.random() - 0.5) * 3;
+                sphere.position.y += (Math.random() - 0.5) * 3;
+                sphere.position.z += (Math.random() - 0.5) * 3;
+                
+                const velocity = new CANNON.Vec3(
+                    (Math.random() - 0.5) * 20,
+                    (Math.random() * 15) + 5,
+                    (Math.random() - 0.5) * 20
+                );
+                
+                const particleBody = new CANNON.Body({ mass: 0.1, shape: new CANNON.Sphere(size) });
+                particleBody.position.copy(sphere.position);
+                particleBody.velocity.copy(velocity);
+                world.addBody(particleBody);
+
+                explosionParticles.push({ mesh: sphere, body: particleBody, startTime: Date.now() });
+                scene.add(sphere);
+            }
+            setTimeout(resetHelicopter, 4000);
+        }
+
+        function updateExplosion() {
+            if (!isExploding) return;
+            
+            explosionParticles.forEach((p, index) => {
+                p.mesh.position.copy(p.body.position);
+                p.mesh.quaternion.copy(p.body.quaternion);
+
+                const age = Date.now() - p.startTime;
+                if (age > 2000) {
+                    p.mesh.material.opacity = Math.max(0, 1 - (age - 2000) / 1000);
+                    p.mesh.material.transparent = true;
+                }
+                if (age > 3000) {
+                    scene.remove(p.mesh);
+                    world.remove(p.body);
+                    explosionParticles.splice(index, 1);
+                }
+            });
+
+            if (explosionParticles.length === 0) {
+                isExploding = false;
+            }
+        }
+        
+        function resetHelicopter() {
+            isExploding = false;
+            explosionParticles.forEach(p => {
+                scene.remove(p.mesh);
+                world.remove(p.body);
+            });
+            explosionParticles = [];
+
+            const resetPosition = new CANNON.Vec3(0, 30, 0);
+            helicopterBody.position.copy(resetPosition);
+            helicopterBody.velocity.set(0, 0, 0);
+            helicopterBody.angularVelocity.set(0, 0, 0);
+            helicopterBody.quaternion.set(0, 0, 0, 1);
+            helicopter.visible = true;
+        }
+
+        // --- COLLISION LOGIC ---
+        const collisionLog = [];
+        helicopterBody.addEventListener('collide', (event) => {
+            const speed = event.contact.getImpactVelocityAlongNormal();
+            if (speed > 2.5 && !isExploding) {
+                createExplosion(helicopter.position.clone());
+            }
+            const logEntry = `${new Date().toLocaleTimeString()}: Collision! Impact: ${speed.toFixed(2)}`;
+            collisionLog.unshift(logEntry);
+            if (collisionLog.length > 10) collisionLog.pop();
+            document.getElementById('collision-log').innerHTML = collisionLog.join('<br>');
+        });
+
+        // --- ANIMATION LOOP ---
+        let rotorRotation = 0;
+        const clock = new THREE.Clock();
+        
+        function animate() {
+            requestAnimationFrame(animate);
+            const deltaTime = clock.getDelta();
+
+            if (!isExploding) {
+                const forceStrength = 50;
+                const torqueStrength = 25;
+
+                const force = new CANNON.Vec3(0, 0, 0);
+                const torque = new CANNON.Vec3(0, 0, 0);
+
+                force.y += 9.82 * helicopterBody.mass;
+                
+                const forward = new CANNON.Vec3();
+                helicopterBody.quaternion.vmult(new CANNON.Vec3(1, 0, 0), forward);
+                const right = new CANNON.Vec3();
+                helicopterBody.quaternion.vmult(new CANNON.Vec3(0, 0, -1), right);
+
+                if (keys.w) force.vadd(forward.scale(forceStrength * 0.8), force);
+                if (keys.s) force.vsub(forward.scale(forceStrength * 0.5), force);
+                if (keys.left) force.vadd(right.scale(forceStrength * 0.6), force);
+                if (keys.right) force.vsub(right.scale(forceStrength * 0.6), force);
+
+                if (keys.up) force.y += forceStrength;
+                if (keys.down) force.y -= forceStrength * 0.7;
+                if (keys.a) torque.y += torqueStrength;
+                if (keys.d) torque.y -= torqueStrength;
+
+                helicopterBody.applyLocalForce(force, new CANNON.Vec3(0, 0, 0));
+                helicopterBody.torque.set(torque.x, torque.y, torque.z);
+            }
+
+            world.step(1/60, deltaTime, 3);
+            
+            if (!isExploding) {
+                helicopter.position.copy(helicopterBody.position);
+                helicopter.quaternion.copy(helicopterBody.quaternion);
+                helicopterDebugBox.position.copy(helicopterBody.position);
+                helicopterDebugBox.quaternion.copy(helicopterBody.quaternion);
+
+                rotorRotation += 0.8;
+                mainRotor.rotation.y = rotorRotation;
+                tailRotor.rotation.y = rotorRotation * 2;
+            }
+
+            updateExplosion();
+
+            const cameraOffset = new THREE.Vector3(-15, 8, 0);
+            const cameraTarget = new THREE.Vector3();
+            cameraOffset.applyQuaternion(helicopter.quaternion);
+            cameraTarget.addVectors(helicopter.position, cameraOffset);
+            
+            camera.position.lerp(cameraTarget, 0.1);
+            camera.lookAt(helicopter.position);
+
+            const speed = helicopterBody.velocity.length();
+            const altitude = helicopterBody.position.y - noise(helicopterBody.position.x, helicopterBody.position.z);
+            document.getElementById('speed').textContent = `Speed: ${speed.toFixed(2)} m/s`;
+            document.getElementById('altitude').textContent = `Altitude: ${altitude.toFixed(2)} m`;
+            
+            renderer.render(scene, camera);
+        }
+
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+        
+        window.onload = animate;
+    </script>
+</body>
+</html>
