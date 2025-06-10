@@ -3,210 +3,472 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>3D Helicopter Flight Simulator with Wooden Huts</title>
+    <title>Stable Helicopter Simulator</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cannon.js/0.6.2/cannon.min.js"></script>
     <style>
         body {
             margin: 0;
             padding: 0;
             overflow: hidden;
-            background: #87CEEB;
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(to bottom, #1a2980, #26d0ce);
+            color: white;
+        }
+        #container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+        }
+        #ui-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 10;
+        }
+        #title {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 15px 25px;
+            border-radius: 15px;
+            font-size: 22px;
+            text-align: center;
+            box-shadow: 0 0 20px rgba(0, 150, 255, 0.5);
+            border: 1px solid rgba(100, 200, 255, 0.3);
+        }
+        .hut-info {
+            font-size: 14px;
+            margin-top: 10px;
+            line-height: 1.5;
+            color: #aaffaa;
+        }
+        #info-panel {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 20px;
+            border-radius: 15px;
+            max-width: 300px;
+            box-shadow: 0 0 20px rgba(0, 150, 255, 0.5);
+            border: 1px solid rgba(100, 200, 255, 0.3);
+        }
+        #info-panel h2 {
+            margin-top: 0;
+            color: #4fc3f7;
+            text-align: center;
+            border-bottom: 1px solid rgba(100, 200, 255, 0.3);
+            padding-bottom: 10px;
+        }
+        .control-group {
+            margin: 15px 0;
+        }
+        .control-label {
+            display: inline-block;
+            width: 140px;
+            color: #bbbbff;
+        }
+        .control-value {
+            color: #4fc3f7;
+            font-weight: bold;
+        }
+        #debug-toggle {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 12px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            pointer-events: auto;
+            box-shadow: 0 0 15px rgba(0, 150, 255, 0.5);
+            border: 1px solid rgba(100, 200, 255, 0.3);
+            transition: all 0.3s ease;
+        }
+        #debug-toggle:hover {
+            background: rgba(30, 30, 60, 0.8);
+            transform: scale(1.05);
         }
         #collision-log {
             position: absolute;
-            bottom: 10px;
-            left: 10px;
-            color: white;
+            bottom: 80px;
+            left: 20px;
             background: rgba(0, 0, 0, 0.7);
-            padding: 10px;
-            border-radius: 5px;
-            font-size: 12px;
-            z-index: 100;
+            padding: 15px;
+            border-radius: 15px;
             max-height: 200px;
             overflow-y: auto;
             width: 300px;
+            box-shadow: 0 0 15px rgba(0, 150, 255, 0.5);
+            border: 1px solid rgba(100, 200, 255, 0.3);
         }
-
-        #info {
-            position: absolute;
-            top: 10px;
-            left: 10px;
-            color: white;
-            background: rgba(0, 0, 0, 0.7);
-            padding: 10px;
-            border-radius: 5px;
-            font-size: 14px;
-            z-index: 100;
-            max-width: 300px;
+        #collision-log h3 {
+            margin-top: 0;
+            color: #4fc3f7;
+            border-bottom: 1px solid rgba(100, 200, 255, 0.3);
+            padding-bottom: 8px;
         }
-
-        #debug-toggle {
-            position: absolute;
-            top: 120px;
-            left: 10px;
-            color: white;
-            background: rgba(0, 0, 0, 0.7);
-            padding: 5px 10px;
-            border-radius: 3px;
-            cursor: pointer;
-            font-size: 12px;
-            z-index: 100;
+        .log-entry {
+            margin: 8px 0;
+            padding: 5px;
+            border-radius: 4px;
+            background: rgba(50, 50, 80, 0.4);
         }
-        
-        #title {
+        .warning {
+            color: #ff9800;
+        }
+        .danger {
+            color: #f44336;
+            font-weight: bold;
+        }
+        #speedometer {
             position: absolute;
-            top: 10px;
-            right: 10px;
-            color: white;
+            bottom: 20px;
+            right: 20px;
             background: rgba(0, 0, 0, 0.7);
-            padding: 15px 20px;
-            border-radius: 10px;
-            font-size: 18px;
-            z-index: 100;
+            padding: 20px;
+            border-radius: 15px;
+            width: 200px;
             text-align: center;
+            box-shadow: 0 0 15px rgba(0, 150, 255, 0.5);
+            border: 1px solid rgba(100, 200, 255, 0.3);
         }
-        
-        .hut-info {
-            font-size: 12px;
-            margin-top: 8px;
-            line-height: 1.4;
+        #speed-value {
+            font-size: 32px;
+            font-weight: bold;
+            color: #4fc3f7;
+            margin: 10px 0;
+        }
+        #altitude-value {
+            font-size: 24px;
+            color: #a5d6a7;
+            margin: 5px 0;
+        }
+        #status {
+            font-size: 18px;
+            margin-top: 10px;
+            color: #c5e1a5;
+        }
+        canvas {
+            display: block;
+        }
+        #instructions {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.7);
+            padding: 15px 30px;
+            border-radius: 15px;
+            text-align: center;
+            box-shadow: 0 0 15px rgba(0, 150, 255, 0.5);
+            border: 1px solid rgba(100, 200, 255, 0.3);
+        }
+        #stabilizer-info {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            width: 300px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 15px;
+            border-radius: 15px;
+            box-shadow: 0 0 15px rgba(0, 150, 255, 0.5);
+            border: 1px solid rgba(100, 200, 255, 0.3);
+        }
+        #stabilizer-info h3 {
+            margin-top: 0;
+            color: #4fc3f7;
+            border-bottom: 1px solid rgba(100, 200, 255, 0.3);
+            padding-bottom: 8px;
+        }
+        .stabilizer-status {
+            color: #a5d6a7;
+            margin: 5px 0;
         }
     </style>
 </head>
 <body>
-    <div id="title">Wooden Hut Village<br><span class="hut-info">Fly around the huts!<br>Crash at >2.5m/s to explode</span></div>
-    
-    <div id="info">
-        <strong>Helicopter Flight Simulator</strong><br>
-        W/S: Forward/Backward<br>
-        Arrow Keys: Up/Down/Left/Right<br>
-        A/D: Rotate Left/Right<br>
-        <div id="speed">Speed: 0</div>
-        <div id="altitude">Altitude: 0</div>
+    <div id="container">
+        <div id="ui-container">
+            <div id="title">
+                Stable Helicopter Simulator<br>
+                <span class="hut-info">Orientation stabilization enabled!<br>Press H to toggle stabilization</span>
+            </div>
+
+            <div id="stabilizer-info">
+                <h3>Orientation Stabilizer</h3>
+                <div class="stabilizer-status" id="stabilizer-status">ACTIVE</div>
+                <div class="stabilizer-status">The helicopter will automatically return to an upright position</div>
+                <div class="stabilizer-status">Stabilization strength: <span id="stabilizer-strength">High</span></div>
+            </div>
+
+            <div id="info-panel">
+                <h2>Flight Controls</h2>
+                <div class="control-group">
+                    <span class="control-label">W / S:</span>
+                    <span class="control-value">Forward / Backward</span>
+                </div>
+                <div class="control-group">
+                    <span class="control-label">Arrow Keys:</span>
+                    <span class="control-value">Up/Down/Left/Right</span>
+                </div>
+                <div class="control-group">
+                    <span class="control-label">A / D:</span>
+                    <span class="control-value">Rotate Left/Right</span>
+                </div>
+                <div class="control-group">
+                    <span class="control-label">R:</span>
+                    <span class="control-value">Reset Helicopter</span>
+                </div>
+                <div class="control-group">
+                    <span class="control-label">H:</span>
+                    <span class="control-value">Toggle Stabilization</span>
+                </div>
+                <div class="control-group">
+                    <span class="control-label">Current Speed:</span>
+                    <span id="current-speed" class="control-value">0 m/s</span>
+                </div>
+                <div class="control-group">
+                    <span class="control-label">Current Altitude:</span>
+                    <span id="current-altitude" class="control-value">0 m</span>
+                </div>
+            </div>
+
+            <div id="debug-toggle" onclick="toggleDebug()">TOGGLE DEBUG VIEW</div>
+
+            <div id="speedometer">
+                <div>SPEED</div>
+                <div id="speed-value">0.00</div>
+                <div>m/s</div>
+                <div id="altitude-value">ALT: 0m</div>
+                <div id="status">Status: Flying</div>
+            </div>
+
+            <div id="instructions">
+                Use keyboard controls to fly the helicopter. Avoid crashing into trees and huts at high speed!
+            </div>
+        </div>
     </div>
 
-    <div id="debug-toggle" onclick="toggleDebug()">Toggle Debug View</div>
-    <div id="collision-log"></div>
-
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/cannon.js/0.6.2/cannon.min.js"></script>
-
     <script>
-        // --- SCENE SETUP ---
+        // Initialize Three.js and Cannon.js
         const scene = new THREE.Scene();
-        scene.fog = new THREE.Fog(0x87CEEB, 50, 300);
-        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        scene.background = new THREE.Color(0x87CEEB);
+        scene.fog = new THREE.Fog(0x87CEEB, 50, 150);
+
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 2000);
+        camera.position.set(0, 30, 30);
+
         const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
         renderer.shadowMap.enabled = true;
         renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-        document.body.appendChild(renderer.domElement);
+        document.getElementById('container').appendChild(renderer.domElement);
 
-        // --- PHYSICS WORLD ---
+        // Initialize physics world
         const world = new CANNON.World();
-        world.gravity.set(0, -9.82, 0); // Apply standard gravity for more realistic falling
+        world.gravity.set(0, -9.82, 0);
         world.broadphase = new CANNON.NaiveBroadphase();
         world.solver.iterations = 10;
 
-        // --- LIGHTING ---
+        // Add lighting
         const ambientLight = new THREE.AmbientLight(0x404040, 0.8);
         scene.add(ambientLight);
 
-        const directionalLight = new THREE.DirectionalLight(0xffffff, 1.0);
-        directionalLight.position.set(50, 50, 50);
-        directionalLight.castShadow = true;
-        directionalLight.shadow.mapSize.width = 2048;
-        directionalLight.shadow.mapSize.height = 2048;
-        scene.add(directionalLight);
-        
-        // --- TERRAIN GENERATION ---
+        const sunLight = new THREE.DirectionalLight(0xffffff, 1.0);
+        sunLight.position.set(100, 150, 100);
+        sunLight.castShadow = true;
+        sunLight.shadow.mapSize.width = 2048;
+        sunLight.shadow.mapSize.height = 2048;
+        scene.add(sunLight);
 
-        // Noise function for varied terrain height
-        function noise(x, y) {
-            const scale = 0.05;
-            const amplitude = 8;
-            return Math.sin(x * scale) * Math.cos(y * scale) * amplitude +
-                   Math.sin(x * scale * 2) * Math.cos(y * scale * 2) * amplitude * 0.5 +
-                   Math.sin(x * scale * 4) * Math.cos(y * scale * 4) * amplitude * 0.25;
+        // Create skybox
+        const skyGeometry = new THREE.SphereGeometry(500, 32, 32);
+        const skyMaterial = new THREE.MeshBasicMaterial({
+            color: 0x87CEEB,
+            side: THREE.BackSide
+        });
+        const sky = new THREE.Mesh(skyGeometry, skyMaterial);
+        scene.add(sky);
+
+        // Create sun
+        const sunGeometry = new THREE.SphereGeometry(15, 32, 32);
+        const sunMaterial = new THREE.MeshBasicMaterial({ color: 0xffff00 });
+        const sun = new THREE.Mesh(sunGeometry, sunMaterial);
+        sun.position.set(150, 200, -100);
+        scene.add(sun);
+
+        // Terrain generation
+        const terrainSize = 600;
+        const terrainResolution = 80;
+        const terrainGeometry = new THREE.PlaneGeometry(terrainSize, terrainSize, terrainResolution - 1, terrainResolution - 1);
+
+        // Height function for terrain
+        function terrainHeight(x, y) {
+            const scale = 0.03;
+            return (
+                Math.sin(x * scale) * Math.cos(y * scale) * 12 +
+                Math.sin(x * scale * 3) * Math.cos(y * scale * 3) * 4 +
+                Math.sin(x * scale * 6) * Math.cos(y * scale * 6) * 1.5
+            );
         }
 
-        // Create the visual terrain mesh
-        const terrainSize = 250;
-        const terrainResolution = 60;
-        const terrainGeometry = new THREE.PlaneGeometry(terrainSize, terrainSize, terrainResolution - 1, terrainResolution - 1);
-        
-        // Apply noise to vertices to create hills
+        // Apply terrain height
         const vertices = terrainGeometry.attributes.position.array;
         for (let i = 0; i < vertices.length; i += 3) {
             const x = vertices[i];
             const y = vertices[i + 1];
-            vertices[i + 2] = noise(x, y);
+            vertices[i + 2] = terrainHeight(x, y);
         }
-        
         terrainGeometry.attributes.position.needsUpdate = true;
         terrainGeometry.computeVertexNormals();
-        
-        // Function to create a uniform green texture
-        function createTerrainTexture() {
-            const canvas = document.createElement('canvas');
-            canvas.width = 512;
-            canvas.height = 512;
-            const ctx = canvas.getContext('2d');
-            
-            // Base green color
-            ctx.fillStyle = '#2E8B57';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-            
-            return canvas;
-        }
 
-        const terrainTexture = new THREE.CanvasTexture(createTerrainTexture());
-        const terrainMaterial = new THREE.MeshLambertMaterial({ map: terrainTexture });
+        const terrainMaterial = new THREE.MeshLambertMaterial({
+            color: 0x32CD32,
+            side: THREE.DoubleSide
+        });
+
         const terrain = new THREE.Mesh(terrainGeometry, terrainMaterial);
         terrain.rotation.x = -Math.PI / 2;
         terrain.receiveShadow = true;
+        terrain.position.y = -2;
         scene.add(terrain);
 
-        // Create the physics body for the terrain using a heightfield
+        // Add physics terrain
         const heightfieldData = [];
         for (let i = 0; i < terrainResolution; i++) {
             heightfieldData.push([]);
             for (let j = 0; j < terrainResolution; j++) {
                 const x = (j / (terrainResolution - 1) - 0.5) * terrainSize;
                 const y = (i / (terrainResolution - 1) - 0.5) * terrainSize;
-                heightfieldData[i].push(noise(x, y));
+                heightfieldData[i].push(terrainHeight(x, y));
             }
         }
+
         const terrainShape = new CANNON.Heightfield(heightfieldData, {
             elementSize: terrainSize / (terrainResolution - 1)
         });
+
         const terrainBody = new CANNON.Body({ mass: 0 });
         terrainBody.addShape(terrainShape);
-        terrainBody.position.set(-terrainSize / 2, 0, terrainSize / 2);
-        terrainBody.quaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), -Math.PI / 2);
+        terrainBody.position.set(-terrainSize/2, 0, terrainSize/2);
+        terrainBody.quaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), -Math.PI/2);
         world.addBody(terrainBody);
 
-        // --- WOODEN HUT CREATION ---
-        
-        // Function to create a procedural wood texture
-        function createWoodTexture(baseColor, grainColor = 0x000000, grainOpacity = 0.15) {
+        // Create a single large water plane
+        const waterGeometry = new THREE.PlaneGeometry(terrainSize, terrainSize);
+        const waterMaterial = new THREE.MeshLambertMaterial({
+            color: 0x1E90FF,
+            transparent: true,
+            opacity: 0.7
+        });
+        const water = new THREE.Mesh(waterGeometry, waterMaterial);
+        water.rotation.x = -Math.PI / 2;
+        water.position.y = -2.5; // Adjusted water level
+        scene.add(water);
+
+        // Create trees
+        const trees = [];
+        const treeCount = 1600;
+        const treeMaterial = new THREE.MeshLambertMaterial({ color: 0x228B22 });
+
+        for (let i = 0; i < treeCount; i++) {
+            const x = (Math.random() - 0.5) * terrainSize * 0.8;
+            const z = (Math.random() - 0.5) * terrainSize * 0.8;
+            const height = terrainHeight(x, z);
+
+            if (height > water.position.y + 1) {
+                const treeHeight = Math.random() * 8 + 6;
+                const treeRadius = treeHeight / 5;
+
+                const trunkGeometry = new THREE.CylinderGeometry(0.4, 0.6, 2, 8);
+                const trunkMaterial = new THREE.MeshLambertMaterial({ color: 0x8B4513 });
+                const trunk = new THREE.Mesh(trunkGeometry, trunkMaterial);
+                trunk.position.set(x, height-2, z);
+                trunk.castShadow = true;
+                scene.add(trunk);
+
+                const canopyGeometry = new THREE.ConeGeometry(treeRadius, treeHeight, 8);
+                const canopy = new THREE.Mesh(canopyGeometry, treeMaterial);
+                canopy.position.set(x, height -1 + treeHeight/2, z);
+                canopy.castShadow = true;
+                scene.add(canopy);
+
+                trees.push({ trunk, canopy, position: new THREE.Vector3(x, height, z) });
+            }
+        }
+
+        // Create bushes
+        const bushes = [];
+        const bushCount = 1800;
+        const bushColors = [0x32CD32, 0x228B22, 0x3CB371, 0x2E8B57, 0x008000];
+
+        for (let i = 0; i < bushCount; i++) {
+            const x = (Math.random() - 0.5) * terrainSize * 0.8;
+            const z = (Math.random() - 0.5) * terrainSize * 0.8;
+            const height = terrainHeight(x, z);
+
+            if (height > water.position.y + 1.5) {
+                const bushGroup = new THREE.Group();
+                const bushSize = Math.random() * 4 + 3;
+
+                const sphereCount = Math.floor(Math.random() * 4) + 3;
+                for (let j = 0; j < sphereCount; j++) {
+                    const radius = Math.random() * 0.8 + 0.6;
+                    const color = bushColors[Math.floor(Math.random() * bushColors.length)];
+                    const sphereGeometry = new THREE.SphereGeometry(radius, 8, 8);
+                    const sphereMaterial = new THREE.MeshLambertMaterial({ color });
+                    const sphere = new THREE.Mesh(sphereGeometry, sphereMaterial);
+
+                    const offsetX = (Math.random() - 0.5) * bushSize;
+                    const offsetZ = (Math.random() - 0.5) * bushSize;
+                    const offsetY = Math.random() * 1.5;
+
+                    sphere.position.set(offsetX, offsetY, offsetZ);
+                    sphere.castShadow = true;
+                    bushGroup.add(sphere);
+                }
+
+                // Position the bush group so its base is at terrain height
+                bushGroup.position.set(x, height-2, z);
+                scene.add(bushGroup);
+                bushes.push(bushGroup);
+            }
+        }
+
+        // Create wooden huts with improved placement
+        const huts = [];
+        const hutPositions = [
+            {x: 40, z: 30}, {x: -35, z: 45}, {x: 25, z: -50},
+            {x: -50, z: -25}, {x: 60, z: -30}, {x: -20, z: 70},
+            {x: 45, z: 55}, {x: -70, z: 20}, {x: 10, z: -60},
+            {x: -30, z: 20}, {x: 20, z: 40}, {x: -40, z: -40}
+        ];
+
+        function createWoodTexture() {
             const canvas = document.createElement('canvas');
             canvas.width = 256;
             canvas.height = 256;
             const ctx = canvas.getContext('2d');
-            
-            ctx.fillStyle = baseColor;
+
+            ctx.fillStyle = '#8B4513';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
-            
-            ctx.strokeStyle = `rgba(${(grainColor >> 16) & 0xff}, ${(grainColor >> 8) & 0xff}, ${grainColor & 0xff}, ${grainOpacity})`;
-            ctx.lineWidth = 1.5;
-            
+
+            ctx.strokeStyle = 'rgba(0, 0, 0, 0.15)';
+            ctx.lineWidth = 2;
+
             for (let i = 0; i < 80; i++) {
                 const x1 = Math.random() * canvas.width;
                 const y1 = Math.random() * canvas.height;
                 const x2 = x1 + (Math.random() - 0.5) * 80;
                 const y2 = y1 + (Math.random() - 0.5) * 80;
-                
+
                 ctx.beginPath();
                 ctx.moveTo(x1, y1);
                 ctx.bezierCurveTo(
@@ -219,183 +481,205 @@
             return canvas;
         }
 
-        const huts = [];
-        const debugBoxes = [];
-        const hutPositions = [
-            {x: 30, z: 20, width: 6, height: 4, depth: 6},
-            {x: -25, z: 35, width: 5, height: 5, depth: 5},
-            {x: 15, z: -40, width: 5, height: 4, depth: 4},
-            {x: -40, z: -15, width: 4, height: 6, depth: 4},
-            {x: 50, z: -20, width: 7, height: 4, depth: 7},
-            {x: -10, z: 60, width: 6, height: 5, depth: 5},
-            {x: 35, z: 45, width: 5, height: 4, depth: 4},
-            {x: -60, z: 10, width: 5, height: 6, depth: 5}
-        ];
+        const woodTexture = new THREE.CanvasTexture(createWoodTexture());
+        const darkWoodTexture = new THREE.CanvasTexture(createWoodTexture());
 
-        const woodTexture = new THREE.CanvasTexture(createWoodTexture('#8B4513'));
-        const darkWoodTexture = new THREE.CanvasTexture(createWoodTexture('#5D2906'));
-        const roofTexture = new THREE.CanvasTexture(createWoodTexture('#A0522D', '#000000', 0.2));
+        hutPositions.forEach(pos => {
+            // Calculate average height for the hut footprint
+            let heightSum = 0;
+            let samplePoints = 0;
+            
+            // Sample multiple points within the hut area
+            for (let dx = -1; dx <= 1; dx += 1) {
+                for (let dz = -1; dz <= 1; dz += 1) {
+                    const sampleX = pos.x + dx * 3;
+                    const sampleZ = pos.z + dz * 3;
+                    heightSum += terrainHeight(sampleX, sampleZ);
+                    samplePoints++;
+                }
+            }
+            
+            const avgHeight = heightSum / samplePoints;
 
-        hutPositions.forEach(hut => {
-            const terrainHeight = noise(hut.x, hut.z);
-            
-            const hutBodyGeometry = new THREE.BoxGeometry(hut.width, hut.height, hut.depth);
-            const hutBodyMaterial = new THREE.MeshLambertMaterial({ map: woodTexture });
-            const hutBodyMesh = new THREE.Mesh(hutBodyGeometry, hutBodyMaterial);
-            hutBodyMesh.position.set(hut.x, terrainHeight + hut.height/2, hut.z);
-            hutBodyMesh.castShadow = true;
-            scene.add(hutBodyMesh);
-            
-            const roofHeight = hut.height * 0.5;
-            const roofGeometry = new THREE.CylinderGeometry(0, hut.width * 0.707, roofHeight, 4, 1);
-            const roofMaterial = new THREE.MeshLambertMaterial({ map: roofTexture });
-            const roofMesh = new THREE.Mesh(roofGeometry, roofMaterial);
-            roofMesh.position.set(hut.x, terrainHeight + hut.height + roofHeight / 2, hut.z);
-            roofMesh.rotation.y = Math.PI / 4;
-            roofMesh.castShadow = true;
-            scene.add(roofMesh);
-            
-            const doorWidth = hut.width * 0.3;
-            const doorHeight = hut.height * 0.7;
-            const doorGeometry = new THREE.BoxGeometry(doorWidth, doorHeight, 0.15);
-            const doorMaterial = new THREE.MeshLambertMaterial({ map: darkWoodTexture });
-            const doorMesh = new THREE.Mesh(doorGeometry, doorMaterial);
-            doorMesh.position.set(hut.x, terrainHeight + doorHeight/2, hut.z + hut.depth/2 + 0.05);
-            scene.add(doorMesh);
-            
-            const windowSize = Math.min(hut.width, hut.height) * 0.25;
-            const windowGeometry = new THREE.BoxGeometry(windowSize, windowSize, 0.15);
-            const windowMaterial = new THREE.MeshLambertMaterial({ color: 0xADD8E6, transparent: true, opacity: 0.6 });
-            const windowMesh = new THREE.Mesh(windowGeometry, windowMaterial);
-            windowMesh.position.set(hut.x - hut.width/4, terrainHeight + hut.height * 0.6, hut.z + hut.depth/2 + 0.05);
-            scene.add(windowMesh);
-            
-            const hutBodyShape = new CANNON.Box(new CANNON.Vec3(hut.width/2, hut.height/2, hut.depth/2));
-            const hutPhysicsBody = new CANNON.Body({ mass: 0 });
-            hutPhysicsBody.addShape(hutBodyShape);
-            hutPhysicsBody.position.set(hut.x, terrainHeight + hut.height/2, hut.z);
-            world.addBody(hutPhysicsBody);
-            
-            const roofPhysicsShape = new CANNON.Box(new CANNON.Vec3(hut.width/2, roofHeight/2, hut.depth/2));
-            const roofPhysicsBody = new CANNON.Body({ mass: 0 });
-            roofPhysicsBody.addShape(roofPhysicsShape);
-            roofPhysicsBody.position.set(hut.x, terrainHeight + hut.height + roofHeight/2, hut.z);
-            world.addBody(roofPhysicsBody);
+            if (avgHeight > water.position.y + 2) {
+                const hutWidth = 6 + Math.random() * 4;
+                const hutHeight = 4 + Math.random() * 2;
+                const hutDepth = 6 + Math.random() * 4;
 
-            const hutDebugBox = new THREE.Mesh(new THREE.BoxGeometry(hut.width, hut.height, hut.depth), new THREE.MeshBasicMaterial({ color: 0xffff00, wireframe: true, transparent: true, opacity: 0.5 }));
-            hutDebugBox.position.copy(hutPhysicsBody.position);
-            hutDebugBox.visible = false;
-            scene.add(hutDebugBox);
+                const hutGeometry = new THREE.BoxGeometry(hutWidth, hutHeight, hutDepth);
+                const hutMaterial = new THREE.MeshLambertMaterial({ map: woodTexture });
+                const hut = new THREE.Mesh(hutGeometry, hutMaterial);
+                hut.position.set(pos.x, avgHeight, pos.z);
+                hut.castShadow = true;
+                scene.add(hut);
 
-            const roofDebugBox = new THREE.Mesh(new THREE.BoxGeometry(hut.width, roofHeight, hut.depth), new THREE.MeshBasicMaterial({ color: 0xff00ff, wireframe: true, transparent: true, opacity: 0.5 }));
-            roofDebugBox.position.copy(roofPhysicsBody.position);
-            roofDebugBox.visible = false;
-            scene.add(roofDebugBox);
-            
-            debugBoxes.push(hutDebugBox, roofDebugBox);
-            huts.push({body: hutBodyMesh, roof: roofMesh, door: doorMesh, window: windowMesh});
+                const roofHeight = hutHeight * 1;
+                const roofGeometry = new THREE.ConeGeometry(hutWidth, roofHeight, 4);
+                const roofMaterial = new THREE.MeshLambertMaterial({ map: darkWoodTexture });
+                const roof = new THREE.Mesh(roofGeometry, roofMaterial);
+                roof.position.set(pos.x, avgHeight + hutHeight, pos.z);
+                roof.rotation.y = Math.PI / 4;
+                roof.castShadow = true;
+                scene.add(roof);
+
+                const doorWidth = hutWidth * 0.3;
+                const doorHeight = hutHeight * 0.7;
+                const doorGeometry = new THREE.BoxGeometry(doorWidth, doorHeight, 0.15);
+                const doorMaterial = new THREE.MeshLambertMaterial({ color: 0x5D2906 });
+                const door = new THREE.Mesh(doorGeometry, doorMaterial);
+                door.position.set(pos.x, avgHeight, pos.z + hutDepth/2 + 0.05);
+                scene.add(door);
+
+                const windowSize = Math.min(hutWidth, hutHeight) * 0.25;
+                const windowGeometry = new THREE.BoxGeometry(windowSize, windowSize, 0.15);
+                const windowMaterial = new THREE.MeshLambertMaterial({
+                    color: 0xADD8E6,
+                    transparent: true,
+                    opacity: 0.6
+                });
+                const window = new THREE.Mesh(windowGeometry, windowMaterial);
+                window.position.set(
+                    pos.x - hutWidth/4,
+                    avgHeight,
+                    pos.z + hutDepth/2 + 0.05
+                );
+                scene.add(window);
+
+                huts.push({ hut, roof, door, window, position: new THREE.Vector3(pos.x, avgHeight, pos.z) });
+            }
         });
 
-        // --- TREE CREATION ---
-        const trees = [];
-        const treeCount = 150;
-        const treeMaterial = new THREE.MeshLambertMaterial({ color: 0x228B22 });
-
-        for (let i = 0; i < treeCount; i++) {
-            const x = (Math.random() - 0.5) * terrainSize * 0.9;
-            const z = (Math.random() - 0.5) * terrainSize * 0.9;
-            const terrainHeight = noise(x, z);
-
-            // Only place trees on land
-            if (terrainHeight > 0) {
-                const height = Math.random() * 5 + 4; // Random height between 4 and 9
-                const radius = height / 4;
-                
-                // Visual tree
-                const treeGeometry = new THREE.ConeGeometry(radius, height, 8);
-                const treeMesh = new THREE.Mesh(treeGeometry, treeMaterial);
-                treeMesh.position.set(x, terrainHeight + height / 2, z);
-                treeMesh.castShadow = true;
-                scene.add(treeMesh);
-
-                // Physics tree (approximated with a cylinder)
-                const treeShape = new CANNON.Cylinder(0.1, radius, height, 8);
-                const treeBody = new CANNON.Body({ mass: 0 });
-                treeBody.addShape(treeShape);
-                treeBody.position.copy(treeMesh.position);
-                world.addBody(treeBody);
-                
-                // Debug visualization for tree
-                const treeDebugMesh = new THREE.Mesh(treeGeometry, new THREE.MeshBasicMaterial({ color: 0x00ff00, wireframe: true, transparent: true, opacity: 0.5 }));
-                treeDebugMesh.position.copy(treeBody.position);
-                treeDebugMesh.visible = false;
-                scene.add(treeDebugMesh);
-                debugBoxes.push(treeDebugMesh);
-
-                trees.push({ mesh: treeMesh, body: treeBody });
-            }
-        }
-
-        let debugMode = false;
-        function toggleDebug() {
-            debugMode = !debugMode;
-            debugBoxes.forEach(box => { box.visible = debugMode; });
-            helicopterDebugBox.visible = debugMode;
-        }
-        
-        // --- HELICOPTER ---
+        // Create helicopter
         const helicopter = new THREE.Group();
 
-        const bodyGeometry = new THREE.CylinderGeometry(1, 1, 4.5, 12);
-        const bodyMaterial = new THREE.MeshLambertMaterial({ color: 0x4169E1 });
+        const bodyGeometry = new THREE.CylinderGeometry(1.2, 1.2, 5, 16);
+        const bodyMaterial = new THREE.MeshPhongMaterial({
+            color: 0x4169E1,
+            shininess: 80
+        });
         const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
         body.rotation.z = Math.PI / 2;
         body.castShadow = true;
         helicopter.add(body);
 
-        const tailGeometry = new THREE.CylinderGeometry(0.2, 0.4, 3.5, 8);
-        const tailMaterial = new THREE.MeshLambertMaterial({ color: 0x5577EE });
+        const tailGeometry = new THREE.CylinderGeometry(0.25, 0.4, 4, 10);
+        const tailMaterial = new THREE.MeshPhongMaterial({
+            color: 0x5577EE,
+            shininess: 60
+        });
         const tail = new THREE.Mesh(tailGeometry, tailMaterial);
-        tail.position.set(-3, 0.3, 0);
+        tail.position.set(-3.5, 0.4, 0);
         tail.rotation.z = Math.PI / 2;
+        tail.castShadow = true;
         helicopter.add(tail);
 
-        const mainRotorGeometry = new THREE.CylinderGeometry(4, 4, 0.1, 32);
-        const mainRotorMaterial = new THREE.MeshLambertMaterial({ color: 0xcccccc, transparent: true, opacity: 0.4 });
-        const mainRotor = new THREE.Mesh(mainRotorGeometry, mainRotorMaterial);
-        mainRotor.position.set(0, 1.5, 0);
+        const mainRotorGeometry = new THREE.BoxGeometry(0.2, 10, 0.5);
+        const mainRotorMaterial = new THREE.MeshPhongMaterial({
+            color: 0x888888,
+            shininess: 90
+        });
+
+        const mainRotor = new THREE.Group();
+        for (let i = 0; i < 4; i++) {
+            const blade = mainRotorGeometry.clone();
+            const rotorBlade = new THREE.Mesh(blade, mainRotorMaterial);
+            rotorBlade.rotation.z = Math.PI / 2;
+            rotorBlade.rotation.y = i * Math.PI / 2;
+            mainRotor.add(rotorBlade);
+        }
+        mainRotor.position.set(0, 2.5, 0);
         helicopter.add(mainRotor);
 
-        const tailRotorGeometry = new THREE.CylinderGeometry(0.7, 0.7, 0.08, 16);
-        const tailRotorMaterial = new THREE.MeshLambertMaterial({ color: 0xcccccc, transparent: true, opacity: 0.35 });
-        const tailRotor = new THREE.Mesh(tailRotorGeometry, tailRotorMaterial);
-        tailRotor.position.set(-4.7, 0.3, 0);
+        const tailRotorGeometry = new THREE.BoxGeometry(0.15, 1.5, 0.2);
+        const tailRotorMaterial = new THREE.MeshPhongMaterial({ color: 0x777777 });
+
+        const tailRotor = new THREE.Group();
+        for (let i = 0; i < 3; i++) {
+            const blade = tailRotorGeometry.clone();
+            const rotorBlade = new THREE.Mesh(blade, tailRotorMaterial);
+            rotorBlade.rotation.y = i * (Math.PI * 2 / 3);
+            tailRotor.add(rotorBlade);
+        }
+        tailRotor.position.set(-5, 0.4, 0);
         tailRotor.rotation.x = Math.PI / 2;
         helicopter.add(tailRotor);
 
-        const skidGeometry = new THREE.BoxGeometry(4, 0.15, 0.15);
-        const skidMaterial = new THREE.MeshLambertMaterial({ color: 0x666666 });
+        const skidGeometry = new THREE.CylinderGeometry(0.1, 0.1, 4, 8);
+        const skidMaterial = new THREE.MeshPhongMaterial({ color: 0x444444 });
+
         const leftSkid = new THREE.Mesh(skidGeometry, skidMaterial);
-        leftSkid.position.set(0, -1.2, -1.2);
+        leftSkid.position.set(0, -1.5, -1.5);
         helicopter.add(leftSkid);
+
         const rightSkid = new THREE.Mesh(skidGeometry, skidMaterial);
-        rightSkid.position.set(0, -1.2, 1.2);
+        rightSkid.position.set(0, -1.5, 1.5);
         helicopter.add(rightSkid);
 
-        helicopter.position.set(0, 25, 0);
+        const frontSkidGeometry = new THREE.CylinderGeometry(0.1, 0.1, 1.5, 8);
+        const frontSkid = new THREE.Mesh(frontSkidGeometry, skidMaterial);
+        frontSkid.position.set(1.5, -1.5, 0);
+        frontSkid.rotation.z = Math.PI / 2;
+        helicopter.add(frontSkid);
+
+        const backSkid = new THREE.Mesh(frontSkidGeometry, skidMaterial);
+        backSkid.position.set(-1.5, -1.5, 0);
+        backSkid.rotation.z = Math.PI / 2;
+        helicopter.add(backSkid);
+
+        helicopter.position.set(0, 30, 0);
         scene.add(helicopter);
 
-        const helicopterShape = new CANNON.Box(new CANNON.Vec3(2.5, 1, 1.2));
-        const helicopterBody = new CANNON.Body({ mass: 5, linearDamping: 0.5, angularDamping: 0.8 });
+        // Add physics body for helicopter
+        const helicopterShape = new CANNON.Box(new CANNON.Vec3(2, 1.2, 1));
+        const helicopterBody = new CANNON.Body({
+            mass: 5,
+            linearDamping: 0.5,
+            angularDamping: 0.8
+        });
         helicopterBody.addShape(helicopterShape);
         helicopterBody.position.copy(helicopter.position);
-        world.add(helicopterBody);
+        world.addBody(helicopterBody);
 
-        const helicopterDebugBox = new THREE.Mesh(new THREE.BoxGeometry(5, 2, 2.4), new THREE.MeshBasicMaterial({ color: 0x00ff00, wireframe: true, transparent: true, opacity: 0.5 }));
-        helicopterDebugBox.visible = false;
-        scene.add(helicopterDebugBox);
-        
-        // --- CONTROLS ---
+        // Add clouds
+        const clouds = [];
+        const cloudGeometry = new THREE.SphereGeometry(16, 24, 24);
+        const cloudMaterial = new THREE.MeshPhongMaterial({
+            color: 0xffffff,
+            transparent: true,
+            opacity: 0.5,
+            shininess: 10
+        });
+
+        for (let i = 0; i < 20; i++) {
+            const cloudGroup = new THREE.Group();
+            const cloudCount = Math.floor(Math.random() * 4) + 3;
+
+            for (let j = 0; j < cloudCount; j++) {
+                const cloud = new THREE.Mesh(cloudGeometry, cloudMaterial);
+                
+                cloud.position.set(
+                    (Math.random() - 0.5) * 24,
+                    (Math.random() - 0.5) * 8,
+                    (Math.random() - 0.5) * 24
+                );
+                cloud.scale.set(
+                    Math.random() + 1,
+                    Math.random() * 0.5 + 0.5,
+                    Math.random() + 1
+                );
+                cloudGroup.add(cloud);
+            }
+
+            cloudGroup.position.set(
+                (Math.random() - 0.5) * 800,
+                100 + Math.random() * 100,
+                (Math.random() - 0.5) * 800
+            );
+            scene.add(cloudGroup);
+            clouds.push(cloudGroup);
+        }
+
+        // Flight controls
         const keys = { w: false, s: false, a: false, d: false, up: false, down: false, left: false, right: false };
         document.addEventListener('keydown', (event) => {
             switch(event.code) {
@@ -407,6 +691,14 @@
                 case 'ArrowDown': keys.down = true; break;
                 case 'ArrowLeft': keys.left = true; break;
                 case 'ArrowRight': keys.right = true; break;
+                case 'KeyR': resetHelicopter(); break;
+                case 'KeyH': 
+                    stabilizationEnabled = !stabilizationEnabled;
+                    document.getElementById('stabilizer-status').textContent = 
+                        stabilizationEnabled ? "ACTIVE" : "DISABLED";
+                    document.getElementById('stabilizer-strength').textContent = 
+                        stabilizationEnabled ? "High" : "None";
+                    break;
             }
         });
         document.addEventListener('keyup', (event) => {
@@ -422,175 +714,270 @@
             }
         });
 
-        // --- EXPLOSION EFFECT ---
-        let explosionParticles = [];
+        // Debug mode toggle
+        let debugMode = false;
+        const debugObjects = [];
+
+        function toggleDebug() {
+            debugMode = !debugMode;
+            debugObjects.forEach(obj => { obj.visible = debugMode; });
+            document.getElementById('debug-toggle').textContent = debugMode ?
+                'DEBUG VIEW: ON' : 'DEBUG VIEW: OFF';
+            document.getElementById('debug-toggle').style.background = debugMode ?
+                'rgba(200, 50, 50, 0.8)' : 'rgba(0, 0, 0, 0.7)';
+        }
+
+        // Add debug objects for huts
+        hutPositions.forEach(pos => {
+            const height = terrainHeight(pos.x, pos.z);
+            if (height > water.position.y + 1) {
+                const debugBox = new THREE.BoxHelper(new THREE.Mesh(
+                    new THREE.BoxGeometry(6, 4, 6)
+                ), 0xffff00);
+                debugBox.position.set(pos.x, height + 2, pos.z);
+                debugBox.visible = false;
+                scene.add(debugBox);
+                debugObjects.push(debugBox);
+            }
+        });
+
+        // Add debug object for helicopter
+        const helicopterDebugBox = new THREE.BoxHelper(helicopter, 0xff0000);
+        helicopterDebugBox.visible = false;
+        scene.add(helicopterDebugBox);
+        debugObjects.push(helicopterDebugBox);
+
+        // Collision system
+        const collisionLog = [];
+        let collisionCount = 0;
+
+        // Helicopter explosion effect
         let isExploding = false;
+        const explosionParticles = [];
 
         function createExplosion(position) {
             if (isExploding) return;
             isExploding = true;
             helicopter.visible = false;
-            
-            const particleCount = 50;
+            document.getElementById('status').textContent = "Status: CRASHED!";
+            document.getElementById('status').style.color = "#ff5555";
+
+            const particleCount = 100;
             const colors = [0xFFA500, 0xFF4500, 0xFF6347, 0x808080, 0x333333];
-            
+
             for (let i = 0; i < particleCount; i++) {
                 const size = Math.random() * 0.5 + 0.2;
                 const geometry = new THREE.SphereGeometry(size, 8, 8);
                 const color = colors[Math.floor(Math.random() * colors.length)];
                 const material = new THREE.MeshBasicMaterial({ color });
-                const sphere = new THREE.Mesh(geometry, material);
-                
-                sphere.position.copy(position);
-                sphere.position.x += (Math.random() - 0.5) * 3;
-                sphere.position.y += (Math.random() - 0.5) * 3;
-                sphere.position.z += (Math.random() - 0.5) * 3;
-                
-                const velocity = new CANNON.Vec3(
-                    (Math.random() - 0.5) * 20,
-                    (Math.random() * 15) + 5,
-                    (Math.random() - 0.5) * 20
-                );
-                
-                const particleBody = new CANNON.Body({ mass: 0.1, shape: new CANNON.Sphere(size) });
-                particleBody.position.copy(sphere.position);
-                particleBody.velocity.copy(velocity);
-                world.addBody(particleBody);
 
-                explosionParticles.push({ mesh: sphere, body: particleBody, startTime: Date.now() });
+                const sphere = new THREE.Mesh(geometry, material);
+
+                sphere.position.copy(position);
+                sphere.position.x += (Math.random() - 0.5) * 5;
+                sphere.position.y += (Math.random() - 0.5) * 5;
+                sphere.position.z += (Math.random() - 0.5) * 5;
+
                 scene.add(sphere);
+                explosionParticles.push({
+                    mesh: sphere,
+                    velocity: new THREE.Vector3(
+                        (Math.random() - 0.5) * 10,
+                        (Math.random() * 10) + 5,
+                        (Math.random() - 0.5) * 10
+                    ),
+                    startTime: Date.now()
+                });
             }
+
             setTimeout(resetHelicopter, 4000);
         }
 
-        function updateExplosion() {
-            if (!isExploding) return;
-            
-            explosionParticles.forEach((p, index) => {
-                p.mesh.position.copy(p.body.position);
-                p.mesh.quaternion.copy(p.body.quaternion);
-
-                const age = Date.now() - p.startTime;
-                if (age > 2000) {
-                    p.mesh.material.opacity = Math.max(0, 1 - (age - 2000) / 1000);
-                    p.mesh.material.transparent = true;
-                }
-                if (age > 3000) {
-                    scene.remove(p.mesh);
-                    world.remove(p.body);
-                    explosionParticles.splice(index, 1);
-                }
-            });
-
-            if (explosionParticles.length === 0) {
-                isExploding = false;
-            }
-        }
-        
         function resetHelicopter() {
             isExploding = false;
+
             explosionParticles.forEach(p => {
                 scene.remove(p.mesh);
-                world.remove(p.body);
             });
-            explosionParticles = [];
+            explosionParticles.length = 0;
 
-            const resetPosition = new CANNON.Vec3(0, 30, 0);
-            helicopterBody.position.copy(resetPosition);
+            helicopterBody.position.set(0, 30, 0);
             helicopterBody.velocity.set(0, 0, 0);
             helicopterBody.angularVelocity.set(0, 0, 0);
             helicopterBody.quaternion.set(0, 0, 0, 1);
             helicopter.visible = true;
+            document.getElementById('status').textContent = "Status: Flying";
+            document.getElementById('status').style.color = "#c5e1a5";
         }
 
-        // --- COLLISION LOGIC ---
-        const collisionLog = [];
-        helicopterBody.addEventListener('collide', (event) => {
-            const speed = event.contact.getImpactVelocityAlongNormal();
-            if (speed > 2.5 && !isExploding) {
-                createExplosion(helicopter.position.clone());
+        // Orientation stabilization
+        let stabilizationEnabled = true;
+        
+        function applyStabilization() {
+            if (!stabilizationEnabled) return;
+            
+            // Get world up vector
+            const worldUp = new CANNON.Vec3(0, 1, 0);
+            
+            // Get helicopter's current up vector in world space
+            const currentUp = new CANNON.Vec3(0, 1, 0);
+            helicopterBody.vectorToWorldFrame(currentUp, currentUp);
+            
+            // Calculate correction axis (cross product of currentUp and worldUp)
+            const correctionAxis = new CANNON.Vec3();
+            currentUp.cross(worldUp, correctionAxis);
+            
+            // Calculate the angle between the vectors
+            const angle = Math.acos(currentUp.dot(worldUp));
+            
+            // Only apply stabilization if there's a significant misalignment
+            if (Math.abs(angle) > 0.05) {
+                // Apply proportional torque to correct orientation
+                const torqueStrength = 200;
+                const torque = correctionAxis.scale(torqueStrength * angle);
+                
+                // Add damping to reduce oscillations
+                const dampingStrength = 30;
+                const dampingTorque = new CANNON.Vec3(
+                    -helicopterBody.angularVelocity.x * dampingStrength,
+                    -helicopterBody.angularVelocity.y * dampingStrength,
+                    -helicopterBody.angularVelocity.z * dampingStrength
+                );
+                
+                torque.vadd(dampingTorque, torque);
+                helicopterBody.applyTorque(torque);
             }
-            const logEntry = `${new Date().toLocaleTimeString()}: Collision! Impact: ${speed.toFixed(2)}`;
-            collisionLog.unshift(logEntry);
-            if (collisionLog.length > 10) collisionLog.pop();
-            document.getElementById('collision-log').innerHTML = collisionLog.join('<br>');
-        });
+        }
 
-        // --- ANIMATION LOOP ---
+        // Animation loop
         let rotorRotation = 0;
         const clock = new THREE.Clock();
-        
+
         function animate() {
             requestAnimationFrame(animate);
             const deltaTime = clock.getDelta();
 
             if (!isExploding) {
                 const forceStrength = 50;
-                const torqueStrength = 25;
+                const torqueStrength = 30;
 
                 const force = new CANNON.Vec3(0, 0, 0);
                 const torque = new CANNON.Vec3(0, 0, 0);
 
                 force.y += 9.82 * helicopterBody.mass;
-                
+
                 const forward = new CANNON.Vec3();
                 helicopterBody.quaternion.vmult(new CANNON.Vec3(1, 0, 0), forward);
+
                 const right = new CANNON.Vec3();
                 helicopterBody.quaternion.vmult(new CANNON.Vec3(0, 0, -1), right);
 
-                if (keys.w) force.vadd(forward.scale(forceStrength * 0.8), force);
+                if (keys.w) force.vadd(forward.scale(forceStrength), force);
                 if (keys.s) force.vsub(forward.scale(forceStrength * 0.5), force);
+                if (keys.up) force.y += forceStrength * 3; // Increased upward force
+                if (keys.down) force.y -= forceStrength * 0.7;
                 if (keys.left) force.vadd(right.scale(forceStrength * 0.6), force);
                 if (keys.right) force.vsub(right.scale(forceStrength * 0.6), force);
-
-                if (keys.up) force.y += forceStrength;
-                if (keys.down) force.y -= forceStrength * 0.7;
                 if (keys.a) torque.y += torqueStrength;
                 if (keys.d) torque.y -= torqueStrength;
 
-                helicopterBody.applyLocalForce(force, new CANNON.Vec3(0, 0, 0));
-                helicopterBody.torque.set(torque.x, torque.y, torque.z);
+                helicopterBody.applyForce(force, helicopterBody.position);
+                helicopterBody.torque.copy(torque);
+                
+                // Apply orientation stabilization
+                applyStabilization();
             }
 
             world.step(1/60, deltaTime, 3);
-            
+
             if (!isExploding) {
                 helicopter.position.copy(helicopterBody.position);
                 helicopter.quaternion.copy(helicopterBody.quaternion);
-                helicopterDebugBox.position.copy(helicopterBody.position);
-                helicopterDebugBox.quaternion.copy(helicopterBody.quaternion);
 
-                rotorRotation += 0.8;
+                rotorRotation += 1.5;
                 mainRotor.rotation.y = rotorRotation;
-                tailRotor.rotation.y = rotorRotation * 2;
+                tailRotor.rotation.z = rotorRotation * 3;
             }
 
-            updateExplosion();
+            if (isExploding) {
+                const now = Date.now();
+                for (let i = explosionParticles.length - 1; i >= 0; i--) {
+                    const p = explosionParticles[i];
+                    const age = now - p.startTime;
+
+                    p.velocity.y -= 0.1;
+
+                    p.mesh.position.add(p.velocity.clone().multiplyScalar(deltaTime));
+
+                    if (age > 2000) {
+                        p.mesh.material.opacity = Math.max(0, 1 - (age - 2000) / 1000);
+                        p.mesh.material.transparent = true;
+                    }
+
+                    if (age > 3000) {
+                        scene.remove(p.mesh);
+                        explosionParticles.splice(i, 1);
+                    }
+                }
+            }
 
             const cameraOffset = new THREE.Vector3(-15, 8, 0);
-            const cameraTarget = new THREE.Vector3();
             cameraOffset.applyQuaternion(helicopter.quaternion);
-            cameraTarget.addVectors(helicopter.position, cameraOffset);
-            
-            camera.position.lerp(cameraTarget, 0.1);
+            camera.position.lerp(helicopter.position.clone().add(cameraOffset), 0.1);
             camera.lookAt(helicopter.position);
 
             const speed = helicopterBody.velocity.length();
-            const altitude = helicopterBody.position.y - noise(helicopterBody.position.x, helicopterBody.position.z);
-            document.getElementById('speed').textContent = `Speed: ${speed.toFixed(2)} m/s`;
-            document.getElementById('altitude').textContent = `Altitude: ${altitude.toFixed(2)} m`;
-            
+            const altitude = helicopterBody.position.y - terrainHeight(helicopterBody.position.x, helicopterBody.position.z);
+
+            document.getElementById('speed-value').textContent = speed.toFixed(2);
+            document.getElementById('altitude-value').textContent = `ALT: ${altitude.toFixed(1)}m`;
+            document.getElementById('current-speed').textContent = `${speed.toFixed(2)} m/s`;
+            document.getElementById('current-altitude').textContent = `${altitude.toFixed(1)} m`;
+
+            const terrainHeightAtPos = terrainHeight(helicopterBody.position.x, helicopterBody.position.z);
+            if (helicopterBody.position.y < terrainHeightAtPos + 1.5) {
+                const impactSpeed = Math.abs(helicopterBody.velocity.y);
+                if (impactSpeed > 0.5) {
+                    if (impactSpeed > 2.5 && !isExploding) {
+                        createExplosion(helicopter.position.clone());
+                    }
+                }
+
+                helicopterBody.position.y = terrainHeightAtPos + 1.5;
+                helicopterBody.velocity.y *= -0.3;
+            }
+
+            huts.forEach(hut => {
+                const distance = helicopter.position.distanceTo(hut.position);
+                if (distance < 8) {
+                    const impactSpeed = helicopterBody.velocity.length();
+                    if (impactSpeed > 2.5 && !isExploding) {
+                        createExplosion(helicopter.position.clone());
+                    }
+
+                    const direction = helicopter.position.clone().sub(hut.position).normalize();
+                    helicopterBody.velocity.add(new CANNON.Vec3(
+                        direction.x * 5,
+                        2,
+                        direction.z * 5
+                    ));
+                }
+            });
+
+            clouds.forEach(cloud => {
+                cloud.rotation.y += 0.001;
+            });
+
             renderer.render(scene, camera);
         }
 
-        // Handle window resize
         window.addEventListener('resize', () => {
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
         });
-        
-        window.onload = animate;
+
+        animate();
     </script>
 </body>
 </html>
