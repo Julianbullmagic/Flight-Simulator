@@ -203,13 +203,15 @@
         #mobile-controls {
             position: absolute;
             bottom: 20px;
-            left: 0;
-            right: 0;
+            left: 12px;
+            right: 12px;
             display: none;
             justify-content: space-between;
-            padding: 0 20px;
+            gap: 12px;
+            padding: 0;
             pointer-events: auto;
-            z-index: 20;
+            z-index: 30;
+            box-sizing: border-box;
         }
         .pad {
             width: 160px;
@@ -247,11 +249,14 @@
             #debug-toggle { left: 12px; bottom: 12px; padding: 10px 14px; }
             #collision-log { width: 240px; left: 12px; bottom: 70px; }
             #mobile-controls { display: flex; }
-            .pad { width: 140px; height: 140px; }
+            .pad { width: min(33vw, 150px); height: min(33vw, 150px); }
             .pad-btn { font-size: 16px; }
             #toolbar { top: 12px; }
             /* Hide debug toggle on phone-sized screens */
             #debug-toggle { display: none; }
+        }
+        @media (max-width: 420px) {
+            .pad { width: min(40vw, 140px); height: min(40vw, 140px); }
         }
     </style>
 </head>
@@ -857,7 +862,7 @@
 
         // Mobile/touch controls
         // Detect small screens for mobile control enablement
-        function isSmallScreen() { return window.innerWidth <= 900; }
+        function isSmallScreen() { return Math.min(window.innerWidth, window.innerHeight) <= 900; }
 
         function bindButtonToKey(buttonId, keyName) {
             const el = document.getElementById(buttonId);
@@ -891,6 +896,12 @@
             bindButtonToKey('btn-r-down', 's');
             bindButtonToKey('btn-r-left', 'a');
             bindButtonToKey('btn-r-right', 'd');
+
+            // Ensure the controls container always fits horizontally
+            const container = document.getElementById('mobile-controls');
+            if (container) {
+                container.style.maxWidth = '100%';
+            }
 
             mobileControlsInitialized = true;
         }
