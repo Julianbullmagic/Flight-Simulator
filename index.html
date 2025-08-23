@@ -95,6 +95,19 @@
             background: rgba(30, 30, 60, 0.8);
             transform: scale(1.05);
         }
+        #scoreboard {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 10px 14px;
+            border-radius: 10px;
+            font-size: 18px;
+            pointer-events: none;
+            z-index: 14;
+            box-shadow: 0 0 15px rgba(0, 150, 255, 0.5);
+            border: 1px solid rgba(100, 200, 255, 0.3);
+        }
         #collision-log {
             position: absolute;
             bottom: 80px;
@@ -158,54 +171,102 @@
         canvas {
             display: block;
         }
-        #instructions {
+        /* Toolbar */
+        #toolbar {
             position: absolute;
-            bottom: 20px;
+            top: 20px;
             left: 50%;
             transform: translateX(-50%);
             background: rgba(0, 0, 0, 0.7);
-            padding: 15px 30px;
-            border-radius: 15px;
-            text-align: center;
+            padding: 10px 12px;
+            border-radius: 12px;
+            display: flex;
+            gap: 8px;
+            pointer-events: auto;
+            z-index: 15;
             box-shadow: 0 0 15px rgba(0, 150, 255, 0.5);
             border: 1px solid rgba(100, 200, 255, 0.3);
         }
-        #stabilizer-info {
+        .tool-btn {
+            background: rgba(30, 30, 60, 0.8);
+            color: #fff;
+            border: 1px solid rgba(100, 200, 255, 0.3);
+            border-radius: 8px;
+            padding: 8px 10px;
+            font-size: 14px;
+            cursor: pointer;
+        }
+        .tool-btn.active {
+            background: rgba(0, 120, 200, 0.8);
+        }
+        /* Mobile controls */
+        #mobile-controls {
             position: absolute;
-            top: 20px;
-            right: 20px;
-            width: 300px;
-            background: rgba(0, 0, 0, 0.7);
-            padding: 15px;
-            border-radius: 15px;
-            box-shadow: 0 0 15px rgba(0, 150, 255, 0.5);
+            bottom: 20px;
+            left: 0;
+            right: 0;
+            display: none;
+            justify-content: space-between;
+            padding: 0 20px;
+            pointer-events: auto;
+            z-index: 20;
+        }
+        .pad {
+            width: 160px;
+            height: 160px;
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            grid-template-rows: repeat(3, 1fr);
+            gap: 8px;
+        }
+        .pad-btn {
+            background: rgba(0, 0, 0, 0.55);
             border: 1px solid rgba(100, 200, 255, 0.3);
+            border-radius: 12px;
+            color: #ffffff;
+            font-size: 18px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 0 12px rgba(0, 150, 255, 0.35);
+            touch-action: none;
+            user-select: none;
+            -webkit-user-select: none;
+            -webkit-tap-highlight-color: transparent;
         }
-        #stabilizer-info h3 {
-            margin-top: 0;
-            color: #4fc3f7;
-            border-bottom: 1px solid rgba(100, 200, 255, 0.3);
-            padding-bottom: 8px;
+        .pad-btn:active {
+            background: rgba(30, 30, 60, 0.8);
+            transform: scale(0.98);
         }
-        .stabilizer-status {
-            color: #a5d6a7;
-            margin: 5px 0;
+
+        /* Responsive UI tweaks */
+        @media (max-width: 900px) {
+            #title { font-size: 18px; padding: 10px 16px; right: 12px; top: 12px; }
+            #info-panel { max-width: 260px; padding: 14px; left: 12px; top: 64px; }
+            #speedometer { width: 160px; padding: 14px; right: 12px; bottom: 12px; }
+            #debug-toggle { left: 12px; bottom: 12px; padding: 10px 14px; }
+            #collision-log { width: 240px; left: 12px; bottom: 70px; }
+            #mobile-controls { display: flex; }
+            .pad { width: 140px; height: 140px; }
+            .pad-btn { font-size: 16px; }
+            #toolbar { top: 12px; }
+            /* Hide debug toggle on phone-sized screens */
+            #debug-toggle { display: none; }
         }
     </style>
 </head>
 <body>
     <div id="container">
         <div id="ui-container">
+            <div id="scoreboard">Score: <span id="score-value">0</span></div>
             <div id="title">
                 Stable Helicopter Simulator<br>
-                <span class="hut-info">Orientation stabilization enabled!<br>Press H to toggle stabilization</span>
             </div>
 
-            <div id="stabilizer-info">
-                <h3>Orientation Stabilizer</h3>
-                <div class="stabilizer-status" id="stabilizer-status">ACTIVE</div>
-                <div class="stabilizer-status">The helicopter will automatically return to an upright position</div>
-                <div class="stabilizer-status">Stabilization strength: <span id="stabilizer-strength">High</span></div>
+            <div id="toolbar">
+                <button class="tool-btn active" id="toggle-info">Info</button>
+                <button class="tool-btn active" id="toggle-speed">Speedo</button>
+                <button class="tool-btn active" id="toggle-log">Log</button>
             </div>
 
             <div id="info-panel">
@@ -227,10 +288,6 @@
                     <span class="control-value">Reset Helicopter</span>
                 </div>
                 <div class="control-group">
-                    <span class="control-label">H:</span>
-                    <span class="control-value">Toggle Stabilization</span>
-                </div>
-                <div class="control-group">
                     <span class="control-label">Current Speed:</span>
                     <span id="current-speed" class="control-value">0 m/s</span>
                 </div>
@@ -250,9 +307,11 @@
                 <div id="status">Status: Flying</div>
             </div>
 
-            <div id="instructions">
-                Use keyboard controls to fly the helicopter. Avoid crashing into trees and huts at high speed!
+            <div id="collision-log">
+                <h3>Collision Log</h3>
+                <div id="collision-entries"></div>
             </div>
+
         </div>
     </div>
 
@@ -394,13 +453,40 @@
                 trunk.castShadow = true;
                 scene.add(trunk);
 
-                const canopyGeometry = new THREE.ConeGeometry(treeRadius, treeHeight, 8);
-                const canopy = new THREE.Mesh(canopyGeometry, treeMaterial);
-                canopy.position.set(x, height -1 + treeHeight/2, z);
-                canopy.castShadow = true;
-                scene.add(canopy);
-
-                trees.push({ trunk, canopy, position: new THREE.Vector3(x, height, z) });
+                // Disable spherical-cluster canopy variant (always use cone)
+                const useClusterCanopy = false;
+                if (useClusterCanopy) {
+                    const canopyGroup = new THREE.Group();
+                    const leafColors = [
+                        0x2e7d32, 0x388e3c, 0x43a047, 0x4caf50,
+                        0x66bb6a, 0x1b5e20, 0x2e8b57
+                    ];
+                    const sphereCount = Math.floor(Math.random() * 5) + 6; // 6 - 10
+                    const canopySpread = treeRadius * 0.9;
+                    for (let j = 0; j < sphereCount; j++) {
+                        const radius = Math.random() * (treeRadius * 0.35) + (treeRadius * 0.25);
+                        const geo = new THREE.SphereGeometry(radius, 10, 10);
+                        const color = leafColors[Math.floor(Math.random() * leafColors.length)];
+                        const mat = new THREE.MeshLambertMaterial({ color });
+                        const s = new THREE.Mesh(geo, mat);
+                        const offsetX = (Math.random() - 0.5) * canopySpread;
+                        const offsetZ = (Math.random() - 0.5) * canopySpread;
+                        const offsetY = Math.random() * (treeHeight * 0.6);
+                        s.position.set(offsetX, offsetY, offsetZ);
+                        s.castShadow = true;
+                        canopyGroup.add(s);
+                    }
+                    canopyGroup.position.set(x, height - 1 + treeHeight * 0.35, z);
+                    scene.add(canopyGroup);
+                    trees.push({ trunk, canopy: canopyGroup, position: new THREE.Vector3(x, height, z) });
+                } else {
+                    const canopyGeometry = new THREE.ConeGeometry(treeRadius, treeHeight, 8);
+                    const canopy = new THREE.Mesh(canopyGeometry, treeMaterial);
+                    canopy.position.set(x, height -1 + treeHeight/2, z);
+                    canopy.castShadow = true;
+                    scene.add(canopy);
+                    trees.push({ trunk, canopy, position: new THREE.Vector3(x, height, z) });
+                }
             }
         }
 
@@ -573,35 +659,22 @@
         tail.castShadow = true;
         helicopter.add(tail);
 
-        const mainRotorGeometry = new THREE.BoxGeometry(0.2, 10, 0.5);
-        const mainRotorMaterial = new THREE.MeshPhongMaterial({
-            color: 0x888888,
-            shininess: 90
-        });
-
-        const mainRotor = new THREE.Group();
-        for (let i = 0; i < 4; i++) {
-            const blade = mainRotorGeometry.clone();
-            const rotorBlade = new THREE.Mesh(blade, mainRotorMaterial);
-            rotorBlade.rotation.z = Math.PI / 2;
-            rotorBlade.rotation.y = i * Math.PI / 2;
-            mainRotor.add(rotorBlade);
-        }
+        // Translucent rotor disks
+        const mainRotor = new THREE.Mesh(
+            new THREE.CircleGeometry(5.5, 48),
+            new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.22, side: THREE.DoubleSide })
+        );
+        mainRotor.rotation.x = -Math.PI / 2; // horizontal (XZ plane)
         mainRotor.position.set(0, 2.5, 0);
         helicopter.add(mainRotor);
 
-        const tailRotorGeometry = new THREE.BoxGeometry(0.15, 1.5, 0.2);
-        const tailRotorMaterial = new THREE.MeshPhongMaterial({ color: 0x777777 });
-
-        const tailRotor = new THREE.Group();
-        for (let i = 0; i < 3; i++) {
-            const blade = tailRotorGeometry.clone();
-            const rotorBlade = new THREE.Mesh(blade, tailRotorMaterial);
-            rotorBlade.rotation.y = i * (Math.PI * 2 / 3);
-            tailRotor.add(rotorBlade);
-        }
+        const tailRotor = new THREE.Mesh(
+            new THREE.CircleGeometry(2.2, 40),
+            new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.22, side: THREE.DoubleSide })
+        );
         tailRotor.position.set(-5, 0.4, 0);
-        tailRotor.rotation.x = Math.PI / 2;
+        // Make disk face sideways: plane = YZ, so normal = ±X
+        tailRotor.rotation.set(0, -Math.PI / 2, 0);
         helicopter.add(tailRotor);
 
         const skidGeometry = new THREE.CylinderGeometry(0.1, 0.1, 4, 8);
@@ -628,6 +701,43 @@
 
         helicopter.position.set(0, 30, 0);
         scene.add(helicopter);
+
+        // Create helipads with red crosses
+        const helipads = [];
+        const helipadCount = 5;
+        const helipadColors = [0x4fc3f7, 0xffcc80, 0xa5d6a7, 0xffab91, 0xce93d8];
+        for (let i = 0; i < helipadCount; i++) {
+            let x, z, y;
+            let tries = 0;
+            do {
+                x = (Math.random() - 0.5) * terrainSize * 0.7;
+                z = (Math.random() - 0.5) * terrainSize * 0.7;
+                y = terrainHeight(x, z);
+                tries++;
+            } while ((y <= water.position.y + 2) && tries < 50);
+
+            const padRadius = 4;
+            const padHeight = 0.2;
+            const pad = new THREE.Mesh(
+                new THREE.CylinderGeometry(padRadius, padRadius, padHeight, 32),
+                new THREE.MeshLambertMaterial({ color: helipadColors[i % helipadColors.length] })
+            );
+            pad.receiveShadow = true;
+            pad.position.set(x, y - padHeight/2, z);
+            scene.add(pad);
+
+            const crossThickness = 0.4;
+            const crossLength = padRadius * 1.8;
+            const crossMat = new THREE.MeshLambertMaterial({ color: 0xff4444 });
+            const cross1 = new THREE.Mesh(new THREE.BoxGeometry(crossLength, crossThickness, crossThickness), crossMat);
+            const cross2 = new THREE.Mesh(new THREE.BoxGeometry(crossThickness, crossThickness, crossLength), crossMat);
+            cross1.position.set(x, y + crossThickness/2 + 0.02, z);
+            cross2.position.set(x, y + crossThickness/2 + 0.02, z);
+            cross1.castShadow = true; cross2.castShadow = true;
+            scene.add(cross1); scene.add(cross2);
+
+            helipads.push({ position: new THREE.Vector3(x, y, z), radius: padRadius, scored: false });
+        }
 
         // Add physics body for helicopter
         const helicopterShape = new CANNON.Box(new CANNON.Vec3(2, 1.2, 1));
@@ -692,13 +802,6 @@
                 case 'ArrowLeft': keys.left = true; break;
                 case 'ArrowRight': keys.right = true; break;
                 case 'KeyR': resetHelicopter(); break;
-                case 'KeyH': 
-                    stabilizationEnabled = !stabilizationEnabled;
-                    document.getElementById('stabilizer-status').textContent = 
-                        stabilizationEnabled ? "ACTIVE" : "DISABLED";
-                    document.getElementById('stabilizer-strength').textContent = 
-                        stabilizationEnabled ? "High" : "None";
-                    break;
             }
         });
         document.addEventListener('keyup', (event) => {
@@ -713,6 +816,78 @@
                 case 'ArrowRight': keys.right = false; break;
             }
         });
+
+        // Mobile/touch controls
+        // Detect small screens for mobile control enablement
+        function isSmallScreen() { return window.innerWidth <= 900; }
+
+        function bindButtonToKey(buttonId, keyName) {
+            const el = document.getElementById(buttonId);
+            if (!el) return;
+
+            const press = (e) => { e.preventDefault(); keys[keyName] = true; };
+            const release = (e) => { e.preventDefault(); keys[keyName] = false; };
+
+            el.addEventListener('pointerdown', press);
+            el.addEventListener('pointerup', release);
+            el.addEventListener('pointerleave', release);
+            el.addEventListener('pointercancel', release);
+            el.addEventListener('contextmenu', (e) => e.preventDefault());
+        }
+
+        let mobileControlsInitialized = false;
+
+        function setupMobileControls() {
+            const controls = document.getElementById('mobile-controls');
+            if (!controls) return;
+            if (mobileControlsInitialized) return;
+
+            // Left pad: Arrow keys (strafe and altitude)
+            bindButtonToKey('btn-l-up', 'up');
+            bindButtonToKey('btn-l-down', 'down');
+            bindButtonToKey('btn-l-left', 'left');
+            bindButtonToKey('btn-l-right', 'right');
+
+            // Right pad: Forward/Back and Yaw
+            bindButtonToKey('btn-r-up', 'w');
+            bindButtonToKey('btn-r-down', 's');
+            bindButtonToKey('btn-r-left', 'a');
+            bindButtonToKey('btn-r-right', 'd');
+
+            mobileControlsInitialized = true;
+        }
+
+        if (isSmallScreen()) { setupMobileControls(); }
+
+        // Panel toggles
+        function setupPanelToggles() {
+            const infoPanel = document.getElementById('info-panel');
+            const speedometer = document.getElementById('speedometer');
+            const collisionLogPanel = document.getElementById('collision-log');
+            const btnInfo = document.getElementById('toggle-info');
+            const btnSpeed = document.getElementById('toggle-speed');
+            const btnLog = document.getElementById('toggle-log');
+
+            function toggle(el, btn) {
+                if (!el) return;
+                const nowVisible = el.style.display !== 'none';
+                el.style.display = nowVisible ? 'none' : '';
+                btn.classList.toggle('active', !nowVisible);
+            }
+
+            btnInfo.addEventListener('click', () => toggle(infoPanel, btnInfo));
+            btnSpeed.addEventListener('click', () => toggle(speedometer, btnSpeed));
+            btnLog.addEventListener('click', () => toggle(collisionLogPanel, btnLog));
+
+            // On small screens, hide info panel and log by default to reduce overlap
+            if (window.innerWidth <= 900) {
+                infoPanel.style.display = 'none';
+                btnInfo.classList.remove('active');
+                if (collisionLogPanel) collisionLogPanel.style.display = 'none';
+                btnLog.classList.remove('active');
+            }
+        }
+        setupPanelToggles();
 
         // Debug mode toggle
         let debugMode = false;
@@ -811,10 +986,10 @@
         }
 
         // Orientation stabilization
-        let stabilizationEnabled = true;
+        let stabilizationEnabled = true; // Always on
         
         function applyStabilization() {
-            if (!stabilizationEnabled) return;
+            if (!stabilizationEnabled) return; // flag remains true
             
             // Get world up vector
             const worldUp = new CANNON.Vec3(0, 1, 0);
@@ -827,8 +1002,9 @@
             const correctionAxis = new CANNON.Vec3();
             currentUp.cross(worldUp, correctionAxis);
             
-            // Calculate the angle between the vectors
-            const angle = Math.acos(currentUp.dot(worldUp));
+            // Calculate the angle between the vectors (clamp dot to avoid NaN)
+            const dotVal = Math.max(-1, Math.min(1, currentUp.dot(worldUp)));
+            const angle = Math.acos(dotVal);
             
             // Only apply stabilization if there's a significant misalignment
             if (Math.abs(angle) > 0.05) {
@@ -845,13 +1021,19 @@
                 );
                 
                 torque.vadd(dampingTorque, torque);
-                helicopterBody.applyTorque(torque);
+                // Cannon.js uses direct torque vector assignment
+                helicopterBody.torque.vadd(torque, helicopterBody.torque);
             }
         }
 
         // Animation loop
-        let rotorRotation = 0;
+        let rotorRotation = 0; // kept but not used for disk rotors
         const clock = new THREE.Clock();
+
+        // Scoring
+        let score = 0;
+        let currentPadIndex = -1;
+        let scoredThisTouchdown = false;
 
         function animate() {
             requestAnimationFrame(animate);
@@ -894,9 +1076,7 @@
                 helicopter.position.copy(helicopterBody.position);
                 helicopter.quaternion.copy(helicopterBody.quaternion);
 
-                rotorRotation += 1.5;
-                mainRotor.rotation.y = rotorRotation;
-                tailRotor.rotation.z = rotorRotation * 3;
+                // No rotor spin required with disk visuals
             }
 
             if (isExploding) {
@@ -935,7 +1115,7 @@
             document.getElementById('current-altitude').textContent = `${altitude.toFixed(1)} m`;
 
             const terrainHeightAtPos = terrainHeight(helicopterBody.position.x, helicopterBody.position.z);
-            if (helicopterBody.position.y < terrainHeightAtPos + 1.5) {
+            if (isFinite(terrainHeightAtPos) && helicopterBody.position.y < terrainHeightAtPos + 1.5) {
                 const impactSpeed = Math.abs(helicopterBody.velocity.y);
                 if (impactSpeed > 0.5) {
                     if (impactSpeed > 2.5 && !isExploding) {
@@ -945,6 +1125,40 @@
 
                 helicopterBody.position.y = terrainHeightAtPos + 1.5;
                 helicopterBody.velocity.y *= -0.3;
+            }
+
+            // Helipad landing detection
+            let onPadIndex = -1;
+            for (let i = 0; i < helipads.length; i++) {
+                const pad = helipads[i];
+                const dx = helicopterBody.position.x - pad.position.x;
+                const dz = helicopterBody.position.z - pad.position.z;
+                const horizontalDist = Math.hypot(dx, dz);
+                const verticalDiff = Math.abs(helicopterBody.position.y - (pad.position.y + 1.5));
+                const horizontalSpeed = Math.hypot(helicopterBody.velocity.x, helicopterBody.velocity.z);
+                const verticalSpeed = Math.abs(helicopterBody.velocity.y);
+                if (horizontalDist <= pad.radius && verticalDiff < 0.6 && horizontalSpeed < 1.2 && verticalSpeed < 0.6) {
+                    onPadIndex = i;
+                    break;
+                }
+            }
+
+            if (onPadIndex !== -1) {
+                if (currentPadIndex !== onPadIndex) {
+                    currentPadIndex = onPadIndex;
+                    scoredThisTouchdown = false;
+                }
+                const pad = helipads[onPadIndex];
+                if (!scoredThisTouchdown && !pad.scored) {
+                    score += 100;
+                    pad.scored = true;
+                    const sv = document.getElementById('score-value');
+                    if (sv) sv.textContent = String(score);
+                    scoredThisTouchdown = true;
+                }
+            } else {
+                currentPadIndex = -1;
+                scoredThisTouchdown = false;
             }
 
             huts.forEach(hut => {
@@ -975,6 +1189,7 @@
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
+            if (isSmallScreen()) { setupMobileControls(); }
         });
 
         animate();
