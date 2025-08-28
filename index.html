@@ -108,6 +108,41 @@
             box-shadow: 0 0 15px rgba(0, 150, 255, 0.5);
             border: 1px solid rgba(100, 200, 255, 0.3);
         }
+        #timer {
+            position: absolute;
+            top: 60px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 8px 12px;
+            border-radius: 10px;
+            font-size: 18px;
+            pointer-events: none;
+            z-index: 14;
+            box-shadow: 0 0 15px rgba(0, 150, 255, 0.5);
+            border: 1px solid rgba(100, 200, 255, 0.3);
+        }
+        #result-overlay {
+            position: absolute;
+            inset: 0;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            background: rgba(0,0,0,0.35);
+            z-index: 50;
+            pointer-events: auto;
+        }
+        #result-panel {
+            background: rgba(0, 0, 0, 0.85);
+            padding: 22px 28px;
+            border-radius: 14px;
+            text-align: center;
+            min-width: 260px;
+            max-width: 90vw;
+            box-shadow: 0 0 20px rgba(0, 150, 255, 0.5);
+            border: 1px solid rgba(100, 200, 255, 0.3);
+        }
+        .result-title { font-size: 22px; margin-bottom: 8px; }
+        .result-desc { font-size: 16px; color: #cfd8dc; }
         #collision-log {
             position: absolute;
             bottom: 80px;
@@ -186,6 +221,22 @@
             z-index: 15;
             box-shadow: 0 0 15px rgba(0, 150, 255, 0.5);
             border: 1px solid rgba(100, 200, 255, 0.3);
+        }
+        #powerup-banner {
+            position: absolute;
+            top: 72px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.7);
+            padding: 8px 14px;
+            border-radius: 10px;
+            font-size: 16px;
+            color: #fff;
+            pointer-events: none;
+            z-index: 16;
+            box-shadow: 0 0 15px rgba(150, 100, 255, 0.5);
+            border: 1px solid rgba(170, 140, 255, 0.35);
+            display: none;
         }
         .tool-btn {
             background: rgba(30, 30, 60, 0.8);
@@ -271,6 +322,8 @@
                 <button class="tool-btn active" id="toggle-log">Log</button>
             </div>
 
+            <div id="powerup-banner"></div>
+
             <div id="info-panel">
                 <h2>Flight Controls</h2>
                 <div class="control-group">
@@ -312,6 +365,15 @@
             <div id="collision-log">
                 <h3>Collision Log</h3>
                 <div id="collision-entries"></div>
+            </div>
+
+            <div id="timer">03:00</div>
+
+            <div id="result-overlay">
+                <div id="result-panel">
+                    <div id="result-title" class="result-title">Result</div>
+                    <div id="result-desc" class="result-desc"></div>
+                </div>
             </div>
 
             <!-- Mobile controls (shown on small screens) -->
@@ -460,7 +522,11 @@
                 [radius, 0],
                 [-radius, 0],
                 [0, radius],
-                [0, -radius]
+                [0, -radius],
+                [radius, radius],
+                [-radius, -radius],
+                [radius, -radius],
+                [-radius, radius]
             ];
             let minY = Infinity;
             for (let i = 0; i < offsets.length; i++) {
@@ -527,8 +593,8 @@
                 const trunkGeometry = new THREE.CylinderGeometry(0.4, 0.6, 2, 8);
                 const trunkMaterial = new THREE.MeshLambertMaterial({ color: 0x8B4513 });
                 const trunk = new THREE.Mesh(trunkGeometry, trunkMaterial);
-                const baseY = groundYMinAt(x, z, 0.8);
-                trunk.position.set(x, baseY + 1.0 - 0.2, z);
+                const baseY = groundYMinAt(x, z, 1.0);
+                trunk.position.set(x, baseY + 1.0 - 0.35, z);
                 trunk.castShadow = true;
                 scene.add(trunk);
 
@@ -555,13 +621,13 @@
                         s.castShadow = true;
                         canopyGroup.add(s);
                     }
-                    canopyGroup.position.set(x, baseY + 2 + treeHeight * 0.35 - 0.2, z);
+                    canopyGroup.position.set(x, baseY + 2 + treeHeight * 0.35 - 0.25, z);
                     scene.add(canopyGroup);
                     trees.push({ trunk, canopy: canopyGroup, position: new THREE.Vector3(x, height, z) });
                 } else {
                 const canopyGeometry = new THREE.ConeGeometry(treeRadius, treeHeight, 8);
                 const canopy = new THREE.Mesh(canopyGeometry, treeMaterial);
-                    canopy.position.set(x, baseY + 2 + treeHeight/2 - 0.2, z);
+                    canopy.position.set(x, baseY + 2 + treeHeight/2 - 0.25, z);
                 canopy.castShadow = true;
                 scene.add(canopy);
                 trees.push({ trunk, canopy, position: new THREE.Vector3(x, height, z) });
@@ -605,8 +671,8 @@
                 }
 
                 // Position the bush group at min ground height over its footprint
-                const groundBase = groundYMinAt(x, z, Math.max(1.2, bushSize * 0.5));
-                bushGroup.position.set(x, groundBase - 0.08, z);
+                const groundBase = groundYMinAt(x, z, Math.max(1.4, bushSize * 0.5));
+                bushGroup.position.set(x, groundBase - 0.12, z);
                 scene.add(bushGroup);
                 bushes.push(bushGroup);
             }
@@ -924,6 +990,33 @@
             boostOrbs.push({ group, baseY, phase: Math.random() * Math.PI * 2, collected: false });
         }
 
+        // Shield orbs (glowing purple spheres) – grant temporary invulnerability
+        const shieldOrbs = [];
+        const shieldOrbCount = 8;
+        for (let i = 0; i < shieldOrbCount; i++) {
+            const group = new THREE.Group();
+            const inner = new THREE.Mesh(
+                new THREE.SphereGeometry(0.9, 16, 16),
+                new THREE.MeshPhongMaterial({ color: 0xaa66ff, emissive: 0x8844ff, emissiveIntensity: 1.0, shininess: 100 })
+            );
+            const outer = new THREE.Mesh(
+                new THREE.SphereGeometry(1.5, 16, 16),
+                new THREE.MeshBasicMaterial({ color: 0xcc99ff, transparent: true, opacity: 0.35 })
+            );
+            const light = new THREE.PointLight(0xbb88ff, 0.8, 20);
+            group.add(inner);
+            group.add(outer);
+            group.add(light);
+
+            const x = (Math.random() - 0.5) * terrainSize * 0.6;
+            const z = (Math.random() - 0.5) * terrainSize * 0.6;
+            const ground = terrainHeight(x, z);
+            const baseY = Math.max(ground + 7, water.position.y + 7) + Math.random() * 14;
+            group.position.set(x, baseY, z);
+            scene.add(group);
+            shieldOrbs.push({ group, baseY, phase: Math.random() * Math.PI * 2, collected: false });
+        }
+
         // Birds
         const birds = [];
         const birdCount = 20;
@@ -1065,9 +1158,9 @@
 
             // Hide all panels by default
             if (infoPanel) infoPanel.style.display = 'none';
-            btnInfo.classList.remove('active');
-            if (collisionLogPanel) collisionLogPanel.style.display = 'none';
-            btnLog.classList.remove('active');
+                btnInfo.classList.remove('active');
+                if (collisionLogPanel) collisionLogPanel.style.display = 'none';
+                btnLog.classList.remove('active');
             if (speedometer) speedometer.style.display = 'none';
             btnSpeed.classList.remove('active');
         }
@@ -1219,6 +1312,17 @@
         let speedBoostExpirations = [];
         let currentPadIndex = -1;
         let scoredThisTouchdown = false;
+
+        // Shield status
+        let shieldExpirations = [];
+
+        // Timer and results
+        const gameDurationMs = 3 * 60 * 1000; // 3 minutes
+        let gameEndAt = Date.now() + gameDurationMs;
+        let gameEnded = false;
+        let totalHelipadPoints = 0;
+        let totalHoopPoints = 0;
+        let totalPointsAvailable = 0;
 
         function animate() {
             requestAnimationFrame(animate);
@@ -1381,6 +1485,17 @@
                 helicopterBody.velocity.y *= -0.3;
             }
 
+            // Timer UI
+            if (!gameEnded) {
+                const msLeft = Math.max(0, gameEndAt - Date.now());
+                const secs = Math.ceil(msLeft / 1000);
+                const mm = String(Math.floor(secs / 60)).padStart(2, '0');
+                const ss = String(secs % 60).padStart(2, '0');
+                const timerEl = document.getElementById('timer');
+                if (timerEl) timerEl.textContent = `${mm}:${ss}`;
+                if (msLeft === 0) gameEnded = true;
+            }
+
             // Boost orb animations and pickup
             // Track cumulative time for orb bobbing
             const elapsedTime = clock.elapsedTime;
@@ -1481,6 +1596,29 @@
             });
 
             renderer.render(scene, camera);
+
+            // End condition and result
+            if (gameEnded) {
+                const pointsAvailable = (helipads.length * 100) + (hoops.length * 50);
+                const percent = (score / pointsAvailable) * 100;
+                let title = 'You Lose';
+                let color = '#ef5350';
+                let desc = `You scored ${score} of ${pointsAvailable} points. Collect at least 50% to pass.`;
+                if (percent > 90) { title = 'Excellent – You are a champion!'; color = '#ffeb3b'; desc = `Fantastic! ${Math.round(percent)}%`; }
+                else if (percent > 75) { title = 'Great job!'; color = '#66bb6a'; desc = `Great job! ${Math.round(percent)}%`; }
+                else if (percent >= 50) { title = 'Good job!'; color = '#42a5f5'; desc = `Good! ${Math.round(percent)}%`; }
+
+                const overlay = document.getElementById('result-overlay');
+                const titleEl = document.getElementById('result-title');
+                const descEl = document.getElementById('result-desc');
+                if (overlay && titleEl && descEl) {
+                    titleEl.textContent = title;
+                    titleEl.style.color = color;
+                    descEl.textContent = desc;
+                    overlay.style.display = 'flex';
+                }
+                return; // stop further updates after showing result
+            }
         }
 
         window.addEventListener('resize', () => {
