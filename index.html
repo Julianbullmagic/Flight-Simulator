@@ -495,6 +495,36 @@
         terrainGeometry.attributes.position.needsUpdate = true;
         terrainGeometry.computeVertexNormals();
 
+        // Create height lookup from the actual terrain mesh vertices
+        function getTerrainHeightFromMesh(worldX, worldZ) {
+            // Convert world coordinates to terrain grid coordinates
+            const gridX = (worldX / terrainSize + 0.5) * (terrainResolution - 1);
+            const gridZ = (worldZ / terrainSize + 0.5) * (terrainResolution - 1);
+            
+            // Clamp to valid range
+            const x = Math.max(0, Math.min(terrainResolution - 1, gridX));
+            const z = Math.max(0, Math.min(terrainResolution - 1, gridZ));
+            
+            // Get the four surrounding vertices
+            const x0 = Math.floor(x);
+            const z0 = Math.floor(z);
+            const x1 = Math.min(x0 + 1, terrainResolution - 1);
+            const z1 = Math.min(z0 + 1, terrainResolution - 1);
+            
+            // Get heights from vertex array (every 3rd element is height)
+            const h00 = vertices[(z0 * terrainResolution + x0) * 3 + 2];
+            const h10 = vertices[(z0 * terrainResolution + x1) * 3 + 2];
+            const h01 = vertices[(z1 * terrainResolution + x0) * 3 + 2];
+            const h11 = vertices[(z1 * terrainResolution + x1) * 3 + 2];
+            
+            // Bilinear interpolation
+            const fx = x - x0;
+            const fz = z - z0;
+            const h0 = h00 * (1 - fx) + h10 * fx;
+            const h1 = h01 * (1 - fx) + h11 * fx;
+            return h0 * (1 - fz) + h1 * fz;
+        }
+
         const terrainMaterial = new THREE.MeshLambertMaterial({
             vertexColors: true,
             side: THREE.DoubleSide
@@ -510,30 +540,11 @@
         const _raycaster = new THREE.Raycaster();
         const _down = new THREE.Vector3(0, -1, 0);
         function groundYAt(x, z) {
-            _raycaster.set(new THREE.Vector3(x, 1000, z), _down);
-            const hits = _raycaster.intersectObject(terrain, true);
-            if (hits && hits.length) return hits[0].point.y;
-            // Fallback to analytical height if ray misses
-            return terrainHeight(x, z) - 2;
+            // Use the exact same vertex data that renders the terrain
+            return getTerrainHeightFromMesh(x, z) + terrain.position.y;
         }
-        function groundYMinAt(x, z, radius) {
-            const offsets = [
-                [0, 0],
-                [radius, 0],
-                [-radius, 0],
-                [0, radius],
-                [0, -radius],
-                [radius, radius],
-                [-radius, -radius],
-                [radius, -radius],
-                [-radius, radius]
-            ];
-            let minY = Infinity;
-            for (let i = 0; i < offsets.length; i++) {
-                const oy = groundYAt(x + offsets[i][0], z + offsets[i][1]);
-                if (oy < minY) minY = oy;
-            }
-            return isFinite(minY) ? minY : groundYAt(x, z);
+        function groundYFormula(x, z) { 
+            return getTerrainHeightFromMesh(x, z) + terrain.position.y; 
         }
 
         // Add physics terrain
@@ -543,7 +554,7 @@
             for (let j = 0; j < terrainResolution; j++) {
                 const x = (j / (terrainResolution - 1) - 0.5) * terrainSize;
                 const y = (i / (terrainResolution - 1) - 0.5) * terrainSize;
-                heightfieldData[i].push(terrainHeight(x, y));
+                heightfieldData[i].push(terrainHeight(x, y) + terrain.position.y);
             }
         }
 
@@ -553,7 +564,8 @@
 
         const terrainBody = new CANNON.Body({ mass: 0 });
         terrainBody.addShape(terrainShape);
-        terrainBody.position.set(-terrainSize/2, 0, terrainSize/2);
+        // Align physics heightfield world transform with visual terrain transform
+        terrainBody.position.set(-terrainSize/2, terrain.position.y, terrainSize/2);
         terrainBody.quaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), -Math.PI/2);
         world.addBody(terrainBody);
 
@@ -577,7 +589,7 @@
         for (let i = 0; i < treeCount; i++) {
             const x = (Math.random() - 0.5) * terrainSize * 0.8;
             const z = (Math.random() - 0.5) * terrainSize * 0.8;
-            const height = terrainHeight(x, z);
+            const height = groundYFormula(x, z);
             const groundY = groundYAt(x, z);
 
             if (groundY > water.position.y + 1) {
@@ -593,8 +605,8 @@
                 const trunkGeometry = new THREE.CylinderGeometry(0.4, 0.6, 2, 8);
                 const trunkMaterial = new THREE.MeshLambertMaterial({ color: 0x8B4513 });
                 const trunk = new THREE.Mesh(trunkGeometry, trunkMaterial);
-                const baseY = groundYMinAt(x, z, 1.0);
-                trunk.position.set(x, baseY + 1.0 - 0.35, z);
+                const baseY = groundYAt(x, z);
+                trunk.position.set(x, baseY + 1.0, z);
                 trunk.castShadow = true;
                 scene.add(trunk);
 
@@ -621,13 +633,13 @@
                         s.castShadow = true;
                         canopyGroup.add(s);
                     }
-                    canopyGroup.position.set(x, baseY + 2 + treeHeight * 0.35 - 0.25, z);
+                    canopyGroup.position.set(x, baseY + 2 + treeHeight * 0.35, z);
                     scene.add(canopyGroup);
                     trees.push({ trunk, canopy: canopyGroup, position: new THREE.Vector3(x, height, z) });
                 } else {
                 const canopyGeometry = new THREE.ConeGeometry(treeRadius, treeHeight, 8);
                 const canopy = new THREE.Mesh(canopyGeometry, treeMaterial);
-                    canopy.position.set(x, baseY + 2 + treeHeight/2 - 0.25, z);
+                    canopy.position.set(x, baseY + 2 + treeHeight/2, z);
                 canopy.castShadow = true;
                 scene.add(canopy);
                 trees.push({ trunk, canopy, position: new THREE.Vector3(x, height, z) });
@@ -643,7 +655,7 @@
         for (let i = 0; i < bushCount; i++) {
             const x = (Math.random() - 0.5) * terrainSize * 0.8;
             const z = (Math.random() - 0.5) * terrainSize * 0.8;
-            const height = terrainHeight(x, z);
+            const height = groundYFormula(x, z);
             const groundY = groundYAt(x, z);
 
             if (groundY > water.position.y + 1.5) {
@@ -671,8 +683,8 @@
                 }
 
                 // Position the bush group at min ground height over its footprint
-                const groundBase = groundYMinAt(x, z, Math.max(1.4, bushSize * 0.5));
-                bushGroup.position.set(x, groundBase - 0.12, z);
+                const groundBase = groundYAt(x, z);
+                bushGroup.position.set(x, groundBase, z);
                 scene.add(bushGroup);
                 bushes.push(bushGroup);
             }
@@ -862,7 +874,7 @@
             do {
                 x = (Math.random() - 0.5) * terrainSize * 0.7;
                 z = (Math.random() - 0.5) * terrainSize * 0.7;
-                y = terrainHeight(x, z);
+                y = groundYFormula(x, z);
                 tries++;
             } while ((y <= water.position.y + 2) && tries < 50);
 
@@ -903,7 +915,7 @@
 
             const hx = (Math.random() - 0.5) * terrainSize * 0.6;
             const hz = (Math.random() - 0.5) * terrainSize * 0.6;
-            const hy = Math.max(terrainHeight(hx, hz) + 4, water.position.y + 4) + Math.random() * 16;
+            const hy = Math.max(groundYFormula(hx, hz) + 4, water.position.y + 4) + Math.random() * 16;
 
             torus.position.set(hx, hy, hz);
             torus.rotation.y = Math.random() * Math.PI * 2; // face random direction
@@ -983,7 +995,7 @@
 
             const x = (Math.random() - 0.5) * terrainSize * 0.6;
             const z = (Math.random() - 0.5) * terrainSize * 0.6;
-            const ground = terrainHeight(x, z);
+            const ground = groundYFormula(x, z);
             const baseY = Math.max(ground + 6, water.position.y + 6) + Math.random() * 12;
             group.position.set(x, baseY, z);
             scene.add(group);
@@ -1010,7 +1022,7 @@
 
             const x = (Math.random() - 0.5) * terrainSize * 0.6;
             const z = (Math.random() - 0.5) * terrainSize * 0.6;
-            const ground = terrainHeight(x, z);
+            const ground = groundYFormula(x, z);
             const baseY = Math.max(ground + 7, water.position.y + 7) + Math.random() * 14;
             group.position.set(x, baseY, z);
             scene.add(group);
@@ -1500,7 +1512,7 @@
             document.getElementById('current-speed').textContent = `${speed.toFixed(2)} m/s`;
             document.getElementById('current-altitude').textContent = `${altitude.toFixed(1)} m`;
 
-            const terrainHeightAtPos = terrainHeight(helicopterBody.position.x, helicopterBody.position.z);
+            const terrainHeightAtPos = groundYFormula(helicopterBody.position.x, helicopterBody.position.z);
             if (isFinite(terrainHeightAtPos) && helicopterBody.position.y < terrainHeightAtPos + 1.5) {
                 const impactSpeedV = Math.abs(helicopterBody.velocity.y);
                 const impactSpeedTotal = helicopterBody.velocity.length();
@@ -1586,6 +1598,10 @@
                     const sv = document.getElementById('score-value');
                     if (sv) sv.textContent = String(score);
                     scoredThisTouchdown = true;
+                    // Remove visuals for collected helipad
+                    if (pad.pad && pad.pad.parent) pad.pad.parent.remove(pad.pad);
+                    if (pad.cross1 && pad.cross1.parent) pad.cross1.parent.remove(pad.cross1);
+                    if (pad.cross2 && pad.cross2.parent) pad.cross2.parent.remove(pad.cross2);
                 }
             } else {
                 currentPadIndex = -1;
@@ -1604,6 +1620,8 @@
                     score += 50;
                     const sv = document.getElementById('score-value');
                     if (sv) sv.textContent = String(score);
+                    // Remove hoop visual once collected
+                    if (hoop.mesh && hoop.mesh.parent) hoop.mesh.parent.remove(hoop.mesh);
                 }
             }
 
