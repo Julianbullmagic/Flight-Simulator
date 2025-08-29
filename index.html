@@ -886,7 +886,7 @@
             cross1.castShadow = true; cross2.castShadow = true;
             scene.add(cross1); scene.add(cross2);
 
-            helipads.push({ position: new THREE.Vector3(x, y, z), radius: padRadius, scored: false });
+            helipads.push({ position: new THREE.Vector3(x, y, z), radius: padRadius, scored: false, pad, cross1, cross2 });
         }
 
         // Create colored hoops to fly through
@@ -1209,6 +1209,7 @@
 
         function createExplosion(position) {
             if (isExploding) return;
+            if (typeof isShieldActive === 'function' && isShieldActive()) return; // ignore while shielded
             isExploding = true;
             helicopter.visible = false;
             document.getElementById('status').textContent = "Status: CRASHED!";
@@ -1315,6 +1316,31 @@
 
         // Shield status
         let shieldExpirations = [];
+        function isShieldActive() { return shieldExpirations.some(t => t > Date.now()); }
+
+        function updatePowerupBanner() {
+            const banner = document.getElementById('powerup-banner');
+            if (!banner) return;
+            const now = Date.now();
+            const boosts = speedBoostExpirations.filter(t => t > now).length;
+            const shields = shieldExpirations.filter(t => t > now).length;
+            const parts = [];
+            if (boosts > 0) parts.push(`Speed Boost x${boosts}`);
+            if (shields > 0) parts.push(`Shield x${shields}`);
+            banner.textContent = parts.join(' | ');
+            if (parts.length) {
+                banner.style.display = 'block';
+                if (shields > 0) {
+                    banner.style.boxShadow = '0 0 15px rgba(150, 100, 255, 0.6)';
+                    banner.style.borderColor = 'rgba(170, 140, 255, 0.6)';
+                } else {
+                    banner.style.boxShadow = '0 0 15px rgba(255, 234, 0, 0.55)';
+                    banner.style.borderColor = 'rgba(255, 234, 0, 0.45)';
+                }
+            } else {
+                banner.style.display = 'none';
+            }
+        }
 
         // Timer and results
         const gameDurationMs = 3 * 60 * 1000; // 3 minutes
@@ -1454,13 +1480,16 @@
 
             // Expire speed boosts and update status
             const nowTs = Date.now();
-            if (speedBoostExpirations.length) {
+            if (speedBoostExpirations.length || shieldExpirations.length) {
                 speedBoostExpirations = speedBoostExpirations.filter(t => t > nowTs);
+                shieldExpirations = shieldExpirations.filter(t => t > nowTs);
                 const statusEl = document.getElementById('status');
                 if (statusEl) {
-                    if (speedBoostExpirations.length > 0) { statusEl.textContent = `Status: BOOST x${speedBoostExpirations.length}`; statusEl.style.color = '#ffe082'; }
+                    if (shieldExpirations.length > 0) { statusEl.textContent = 'Status: SHIELDED'; statusEl.style.color = '#b39ddb'; }
+                    else if (speedBoostExpirations.length > 0) { statusEl.textContent = `Status: BOOST x${speedBoostExpirations.length}`; statusEl.style.color = '#ffe082'; }
                     else { statusEl.textContent = 'Status: Flying'; statusEl.style.color = '#c5e1a5'; }
                 }
+                updatePowerupBanner();
             }
 
             const speed = helicopterBody.velocity.length();
@@ -1510,6 +1539,22 @@
                     orb.collected = true;
                     scene.remove(orb.group);
                     speedBoostExpirations.push(Date.now() + 10000); // add 10s boost instance
+                    updatePowerupBanner();
+                }
+            }
+
+            // Shield orbs: bob, spin, and pickup
+            for (let i = 0; i < shieldOrbs.length; i++) {
+                const orb = shieldOrbs[i];
+                if (orb.collected) continue;
+                orb.group.rotation.y -= 0.01;
+                orb.group.position.y = orb.baseY + Math.sin(elapsedTime * 1.2 + orb.phase) * 0.7;
+                const dist = helicopterBody.position.distanceTo(orb.group.position);
+                if (dist < 2.2) {
+                    orb.collected = true;
+                    scene.remove(orb.group);
+                    shieldExpirations.push(Date.now() + 10000);
+                    updatePowerupBanner();
                 }
             }
 
