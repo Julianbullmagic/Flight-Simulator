@@ -471,6 +471,21 @@
                 const sigma2 = p.radius * p.radius;
                 h += p.amplitude * Math.exp(-r2 / (2 * sigma2));
             }
+            
+            // Create desert valleys - lower terrain in specific areas
+            const desertCenters = [
+                { x: -120, z: -80, radius: 60, depth: 25 },
+                { x: 100, z: 120, radius: 50, depth: 20 }
+            ];
+            for (let i = 0; i < desertCenters.length; i++) {
+                const d = desertCenters[i];
+                const dx = x - d.x;
+                const dz = y - d.z;
+                const r2 = dx * dx + dz * dz;
+                const sigma2 = d.radius * d.radius;
+                h -= d.depth * Math.exp(-r2 / (2 * sigma2));
+            }
+            
             return h;
         }
 
@@ -482,12 +497,14 @@
             const y = vertices[i + 1];
             const h = terrainHeight(x, y);
             vertices[i + 2] = h;
-            // Color by altitude
+            // Color by altitude - add desert biome
             const snow = 38; // higher snow line so only peaks are white
             const rock = 20; // rock band
+            const desert = 5; // desert at low elevations (raised threshold)
             let r, g, b;
             if (h >= snow) { r = 1.0; g = 1.0; b = 1.0; } // white snow
             else if (h >= rock) { r = 0.6; g = 0.6; b = 0.6; } // gray rock
+            else if (h <= desert) { r = 0.85; g = 0.75; b = 0.55; } // sandy desert
             else { r = 0.20; g = 0.70; b = 0.20; } // green grass
             colors.push(r, g, b);
         }
@@ -593,10 +610,12 @@
             const groundY = groundYAt(x, z);
 
             if (groundY > water.position.y + 1) {
-                // Thin out trees with altitude and keep peaks bare
+                // Thin out trees with altitude and keep peaks bare, also avoid desert
                 const snowLine = 38;
                 const rockLine = 20;
-                if (height >= snowLine - 2) continue;
+                const desertLine = 5;
+                if (height >= snowLine - 2) continue; // no trees on peaks
+                if (height <= desertLine + 1) continue; // no trees in desert
                 const altitudeFactor = Math.max(0, 1 - Math.max(0, (height - rockLine)) / (snowLine - rockLine));
                 if (Math.random() > altitudeFactor) continue;
                 const treeHeight = Math.random() * 8 + 6;
@@ -659,9 +678,11 @@
             const groundY = groundYAt(x, z);
 
             if (groundY > water.position.y + 1.5) {
-                // Fade out bushes above rock band
+                // Fade out bushes above rock band and avoid desert
                 const rockLine = 20;
+                const desertLine = 5;
                 if (height > rockLine + 5) continue;
+                if (height <= desertLine + 1) continue; // no bushes in desert
                 const bushGroup = new THREE.Group();
                 const bushSize = Math.random() * 4 + 3;
 
@@ -696,7 +717,16 @@
             {x: 40, z: 30}, {x: -35, z: 45}, {x: 25, z: -50},
             {x: -50, z: -25}, {x: 60, z: -30}, {x: -20, z: 70},
             {x: 45, z: 55}, {x: -70, z: 20}, {x: 10, z: -60},
-            {x: -30, z: 20}, {x: 20, z: 40}, {x: -40, z: -40}
+            {x: -30, z: 20}, {x: 20, z: 40}, {x: -40, z: -40},
+            // Additional houses spread around the map
+            {x: 80, z: 15}, {x: -80, z: -35}, {x: 15, z: 85},
+            {x: -15, z: -85}, {x: 65, z: 70}, {x: -65, z: -70},
+            {x: 30, z: -80}, {x: -30, z: 80}, {x: 85, z: -15},
+            {x: -85, z: 15}, {x: 55, z: -65}, {x: -55, z: 65},
+            {x: 75, z: 45}, {x: -75, z: -45}, {x: 35, z: 75},
+            {x: -35, z: -75}, {x: 50, z: 10}, {x: -50, z: -10},
+            {x: 12, z: 25}, {x: -12, z: -25}, {x: 28, z: 60},
+            {x: -28, z: -60}, {x: 70, z: -40}, {x: -70, z: 40}
         ];
 
         function createWoodTexture() {
@@ -733,23 +763,31 @@
         const darkWoodTexture = new THREE.CanvasTexture(createWoodTexture());
 
         hutPositions.forEach(pos => {
-            // Calculate average height for the hut footprint
+            // Calculate average height and flatness for the hut footprint
             let heightSum = 0;
             let samplePoints = 0;
+            const heights = [];
             
             // Sample multiple points within the hut area
             for (let dx = -1; dx <= 1; dx += 1) {
                 for (let dz = -1; dz <= 1; dz += 1) {
                     const sampleX = pos.x + dx * 3;
                     const sampleZ = pos.z + dz * 3;
-                    heightSum += terrainHeight(sampleX, sampleZ);
+                    const h = terrainHeight(sampleX, sampleZ);
+                    heightSum += h;
+                    heights.push(h);
                     samplePoints++;
                 }
             }
             
             const avgHeight = heightSum / samplePoints;
+            const maxDiff = Math.max(...heights) - Math.min(...heights);
+            const isFlat = maxDiff < 4.0; // check if area is relatively flat (more lenient)
+            const isDesert = avgHeight <= 5; // desert biome
+            const groundY = groundYAt(pos.x, pos.z); // precise ground height
 
-            if (avgHeight > water.position.y + 2) {
+            if (groundY > water.position.y + 2 && !isDesert && isFlat) {
+                // Only build wooden huts in non-desert areas
                 const hutWidth = 6 + Math.random() * 4;
                 const hutHeight = 4 + Math.random() * 2;
                 const hutDepth = 6 + Math.random() * 4;
@@ -757,7 +795,7 @@
                 const hutGeometry = new THREE.BoxGeometry(hutWidth, hutHeight, hutDepth);
                 const hutMaterial = new THREE.MeshLambertMaterial({ map: woodTexture });
                 const hut = new THREE.Mesh(hutGeometry, hutMaterial);
-                hut.position.set(pos.x, avgHeight, pos.z);
+                hut.position.set(pos.x, groundY + hutHeight/2, pos.z);
                 hut.castShadow = true;
                 scene.add(hut);
 
@@ -765,7 +803,7 @@
                 const roofGeometry = new THREE.ConeGeometry(hutWidth, roofHeight, 4);
                 const roofMaterial = new THREE.MeshLambertMaterial({ map: darkWoodTexture });
                 const roof = new THREE.Mesh(roofGeometry, roofMaterial);
-                roof.position.set(pos.x, avgHeight + hutHeight, pos.z);
+                roof.position.set(pos.x, groundY + hutHeight + roofHeight/2, pos.z);
                 roof.rotation.y = Math.PI / 4;
                 roof.castShadow = true;
                 scene.add(roof);
@@ -775,7 +813,7 @@
                 const doorGeometry = new THREE.BoxGeometry(doorWidth, doorHeight, 0.15);
                 const doorMaterial = new THREE.MeshLambertMaterial({ color: 0x5D2906 });
                 const door = new THREE.Mesh(doorGeometry, doorMaterial);
-                door.position.set(pos.x, avgHeight, pos.z + hutDepth/2 + 0.05);
+                door.position.set(pos.x, groundY, pos.z + hutDepth/2 + 0.05);
                 scene.add(door);
 
                 const windowSize = Math.min(hutWidth, hutHeight) * 0.25;
@@ -788,7 +826,7 @@
                 const window = new THREE.Mesh(windowGeometry, windowMaterial);
                 window.position.set(
                     pos.x - hutWidth/4,
-                    avgHeight,
+                    groundY,
                     pos.z + hutDepth/2 + 0.05
                 );
                 scene.add(window);
@@ -871,12 +909,24 @@
         for (let i = 0; i < helipadCount; i++) {
             let x, z, y;
             let tries = 0;
+            let isFlat = false;
             do {
                 x = (Math.random() - 0.5) * terrainSize * 0.7;
                 z = (Math.random() - 0.5) * terrainSize * 0.7;
                 y = groundYFormula(x, z);
+                
+                // Check flatness in a small radius
+                const samples = [
+                    groundYFormula(x + 3, z),
+                    groundYFormula(x - 3, z),
+                    groundYFormula(x, z + 3),
+                    groundYFormula(x, z - 3)
+                ];
+                const maxDiff = Math.max(...samples) - Math.min(...samples);
+                isFlat = maxDiff < 1.5; // relatively flat
+                
                 tries++;
-            } while ((y <= water.position.y + 2) && tries < 50);
+            } while (((y <= water.position.y + 2) || !isFlat) && tries < 100);
 
             const padRadius = 4;
             const padHeight = 0.2;
@@ -885,7 +935,7 @@
                 new THREE.MeshLambertMaterial({ color: helipadColors[i % helipadColors.length] })
             );
             pad.receiveShadow = true;
-            pad.position.set(x, y - padHeight/2, z);
+            pad.position.set(x, y + padHeight/2, z);
             scene.add(pad);
 
             const crossThickness = 0.4;
